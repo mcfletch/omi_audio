@@ -14,7 +14,7 @@ from omi_audio import synth
 from omi_audio.clip import Clip
 from omi_audio.mixer import Mixer
 
-from support import STEP, constant, ramp
+from support import STEP, constant, needs_tracemalloc, ramp, tracemalloc
 
 
 class TestEmptyMixer:
@@ -346,9 +346,8 @@ class TestAllocationDiscipline:
         with pytest.raises(ValueError):
             mixer.mix(129)
 
+    @needs_tracemalloc
     def test_mixing_a_full_pool_allocates_nothing_measurable(self):
-        import tracemalloc
-
         mixer = Mixer(sample_rate=8000, voices=16, max_block=512)
         for _ in range(16):
             mixer.play(constant(0.1, frames=100_000), loop=True)
@@ -404,10 +403,9 @@ class TestDeviceGenerator:
         assert len(memoryview(block).cast('B')) == 1024 * 2 * 4
         assert not np.asarray(block).any()
 
+    @needs_tracemalloc
     def test_an_oversized_block_still_costs_nothing_the_second_time(self):
         """The one sanctioned allocation happens once per size, not per block."""
-        import tracemalloc
-
         mixer = Mixer(sample_rate=8000, max_block=64)
         blocks = mixer.blocks()
         next(blocks)
@@ -654,9 +652,8 @@ class TestMuffle:
         mixer.muffle = -3.0
         assert mixer.muffle == 0.0
 
+    @needs_tracemalloc
     def test_muffling_does_not_break_the_allocation_discipline(self):
-        import tracemalloc
-
         mixer = Mixer(sample_rate=8000, voices=4, max_block=512, muffle=0.6)
         for _ in range(4):
             mixer.play(constant(0.1, frames=100_000), loop=True)

@@ -12,6 +12,11 @@ import wave
 import numpy as np
 import pytest
 
+try:
+    import tracemalloc
+except ImportError:                     # PyPy, where the module is present but
+    tracemalloc = None                  # the extension behind it is not.
+
 from omi_audio import clip as clipmodule
 from omi_audio import synth
 from omi_audio.clip import Clip
@@ -25,6 +30,17 @@ RATE = 8000
 needs_miniaudio = pytest.mark.skipif(
     not clipmodule.decoder_available(),
     reason='miniaudio is not installed; the backend seam cannot be exercised')
+
+#: The allocation-discipline tests need `tracemalloc`, and PyPy has no such
+#: thing.  Skipping them there is not a hole: what they pin is that NumPy's
+#: ``out=`` parameters keep CPython from allocating in the mixing loop, and
+#: PyPy allocates on entirely different terms -- a JIT and a generational
+#: collector rather than refcounting -- so the numbers would not mean what the
+#: assertions say even if the module existed.  Every CPython row still runs them.
+needs_tracemalloc = pytest.mark.skipif(
+    tracemalloc is None,
+    reason='this interpreter has no tracemalloc; allocation counts are a '
+           'CPython-specific claim')
 
 #: Step between successive samples of :func:`ramp`.  Small enough that a whole
 #: ramp stays inside full scale, so the mixer's output clipping never hides the
