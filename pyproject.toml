@@ -1,0 +1,138 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omi_audio"
+dynamic = ["version"]
+description = "Renderer-agnostic spatial audio on the glTF KHR_audio_emitter model, mixed in NumPy"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [
+    { name = "Mike C. Fletcher", email = "mcfletch@vrplumber.com" }
+]
+keywords = [
+    "audio", "spatial audio", "3D sound", "panning", "mixer", "OMI", "glTF",
+    "KHR_audio_emitter", "numpy", "game",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Mixers",
+    "Topic :: Games/Entertainment",
+]
+
+# NumPy is the only hard dependency. Playing the mix out of a sound card is
+# optional; without a backend the library mixes to a NullDevice and stays silent.
+dependencies = [
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+# Decoding files and reaching a sound card. Optional for one concrete reason
+# rather than a general preference: miniaudio publishes no manylinux aarch64
+# wheel, so a Raspberry Pi, an ARM server or a linux/arm64 container would have
+# to build the sdist and would want a compiler for it. The package and every
+# decoder it bundles are MIT/public-domain, which is why it is the only audio
+# dependency this project takes.
+playback = ["miniaudio>=1.59"]
+test = ["pytest", "pytest-cov", "miniaudio>=1.59"]
+docs = ["sphinx>=7.0", "furo"]
+dev = [
+    "omi_audio[test]",
+    "omi_audio[docs]",
+    "tox>=4.0",
+    "mypy",
+    "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/mcfletch/omi_audio"
+Repository = "https://github.com/mcfletch/omi_audio"
+Documentation = "https://github.com/mcfletch/omi_audio/tree/main/docs"
+Changelog = "https://github.com/mcfletch/omi_audio/blob/main/CHANGELOG.md"
+Issues = "https://github.com/mcfletch/omi_audio/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "omi_audio.__version__" }
+
+[tool.setuptools.package-data]
+omi_audio = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "slow: takes long enough to be worth deselecting during a tight edit loop",
+]
+# A deprecation from our own code is a bug and fails the run.  Everything else
+# is reported but tolerated: a matrix spanning 3.10 to 3.15 exists precisely to
+# surface what NumPy and the standard library are about to remove, and blanket
+# `ignore::DeprecationWarning` -- which is what used to be here -- turned that
+# whole matrix into decoration.
+filterwarnings = [
+    "default::DeprecationWarning",
+    "error::DeprecationWarning:omi_audio",
+    "error::DeprecationWarning:omi_audio.*",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["omi_audio"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# N: naming, which is what let a single camelCase method through unnoticed.
+# UP: the modern syntax this package's floor (3.10) allows -- above all
+#     `dict[str, Any]` and `X | None` over the `typing` spellings.
+select = ["E", "W", "F", "B", "N", "UP"]
+# `%`-formatting is the house style across this workspace, and it is what the
+# logging calls have to use anyway: `log.warning('%s', x)` defers the formatting
+# until somebody is listening, which an f-string cannot do.  Rewriting several
+# hundred of them for consistency with a tool rather than with the code around
+# them would be the wrong way round.
+ignore = ["UP031", "UP032"]
+
+[tool.ruff.lint.per-file-ignores]
+# The model mirrors `KHR_audio_emitter` field for field, and the extension
+# spells its fields in camelCase.  Renaming them would put a translation layer
+# between a glTF document and this model, which is the one thing the data model
+# exists not to have.
+"src/omi_audio/model.py" = ["N815"]
+# Stand-ins for third-party classes keep the names those classes have.
+"tests/test_device.py" = ["N802"]
+
+[tool.mypy]
+# No `python_version`: the checker runs under whichever interpreter tox gave it,
+# so the matrix checks the floor and the ceiling rather than one version in the
+# middle.  See the `typecheck` env in tox.ini.
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true

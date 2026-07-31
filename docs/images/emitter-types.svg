@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 336" width="576" height="336" role="img" aria-label="Global and positional emitters">
+  <title>Global and positional emitters</title>
+  <g>
+  <rect x="16" y="24" width="264" height="250" rx="8" fill="none" stroke="#8a8a8a" stroke-width="1" stroke-dasharray="3 5"/>
+  <text x="148.00" y="46.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="600">global</text>
+  <g opacity="1">
+  <circle cx="90.00" cy="204.00" r="6.0" fill="#3d8fd8"/>
+  <text x="90.00" y="226.00" fill="#3d8fd8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">listener</text>
+  </g>
+  <g opacity="0.45">
+  <circle cx="206.00" cy="204.00" r="6.0" fill="#3d8fd8"/>
+  <text x="206.00" y="226.00" fill="#3d8fd8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">listener</text>
+  </g>
+  <line x1="104.00" y1="204.00" x2="192.00" y2="204.00" stroke="#3d8fd8" stroke-width="1.0" stroke-dasharray="3 4"/>
+  <circle cx="90.00" cy="104.00" r="6.0" fill="#e05252"/>
+  <circle cx="206.00" cy="104.00" r="6.0" fill="#e05252"/>
+  <text x="148.00" y="84.00" fill="#e05252" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">emitter</text>
+  <text x="148.00" y="250.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">fixed to the listener; heard the</text>
+  <text x="148.00" y="268.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">same wherever they stand</text>
+  <rect x="296" y="24" width="264" height="250" rx="8" fill="none" stroke="#8a8a8a" stroke-width="1" stroke-dasharray="3 5"/>
+  <text x="428.00" y="46.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="600">positional</text>
+  <g opacity="1">
+  <circle cx="370.00" cy="204.00" r="6.0" fill="#3d8fd8"/>
+  <text x="370.00" y="226.00" fill="#3d8fd8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">listener</text>
+  </g>
+  <g opacity="0.45">
+  <circle cx="486.00" cy="204.00" r="6.0" fill="#3d8fd8"/>
+  <text x="486.00" y="226.00" fill="#3d8fd8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">listener</text>
+  </g>
+  <line x1="384.00" y1="204.00" x2="472.00" y2="204.00" stroke="#3d8fd8" stroke-width="1.0" stroke-dasharray="3 4"/>
+  <circle cx="494.00" cy="104.00" r="6.0" fill="#e05252"/>
+  <text x="494.00" y="92.00" fill="#e05252" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">emitter</text>
+  <line x1="370.00" y1="204.00" x2="494.00" y2="104.00" stroke="#e05252" stroke-width="1.0" stroke-dasharray="2 4"/>
+  <line x1="486.00" y1="204.00" x2="494.00" y2="104.00" stroke="#e05252" stroke-width="1.0" stroke-dasharray="2 4"/>
+  <text x="428.00" y="250.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">fixed in the world; the distance,</text>
+  <text x="428.00" y="268.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">cone and pan all change</text>
+  <text x="288.00" y="300.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">A global emitter has no PositionalProperties at all — the extension forbids them,</text>
+  <text x="288.00" y="318.00" fill="#a8a8a8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="normal">and a scene (which has no transform) may carry only this kind.</text>
+  </g>
+</svg>

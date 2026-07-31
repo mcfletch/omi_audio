@@ -1,0 +1,77 @@
+name: tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+  # `release.yml` runs this on every push to main and then decides whether the
+  # version is worth publishing, so main is covered from there rather than by a
+  # `push:` trigger here -- which would run the whole matrix twice per push.
+  workflow_call:
+
+jobs:
+  test:
+    name: ${{ matrix.python-version }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "pypy-3.10"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install tox
+        run: python -m pip install --upgrade pip tox tox-gh
+
+      # tox-gh reads the [gh] table in tox.ini and runs the envs mapped to this
+      # interpreter: with the playback backend installed, and without it. The
+      # runner has no sound card, which is exactly the silent path the library
+      # is required to survive. The 3.12 row additionally runs `lint` and
+      # `typecheck`, so ruff and mypy gate a merge rather than being declared in
+      # an extra and run nowhere. Coverage is measured in every test env with a
+      # floor of 95% (see tox.ini).
+      - name: Run tox
+        run: tox
+
+  # Python 3.15 is still a prerelease, so it is reported and not required: a
+  # regression in a CPython beta is worth seeing on the next push, and is not a
+  # reason to hold up a merge or a release. `continue-on-error` is what keeps a
+  # failure here visible without failing the run, which is why this is a job of
+  # its own rather than another row of the matrix above -- the checks list then
+  # says plainly which results are binding.
+  prerelease:
+    name: 3.15 (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+          allow-prereleases: true
+      - name: Install tox
+        run: python -m pip install --upgrade pip tox tox-gh
+      - name: Run tox
+        run: tox
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip tox
+      # -W, so a broken cross-reference in the API reference fails the build
+      # rather than shipping as a dead link.
+      - name: Build the API reference
+        run: tox -e docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-reference
+          path: docs/_build/html
