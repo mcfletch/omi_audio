@@ -40,7 +40,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeAlias
 from collections.abc import Sequence
 
 import numpy as np
@@ -77,7 +77,7 @@ class ShapeType(str, Enum):
 
 
 #: Anything three numbers can be read out of: a tuple, a list, a numpy array.
-Vector = Sequence[float] | NDArray[Any]
+Vector: TypeAlias = Sequence[float] | NDArray[Any]
 
 
 class Rotation(Protocol):

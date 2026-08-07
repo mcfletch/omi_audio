@@ -17,6 +17,7 @@ from __future__ import annotations
 
 
 from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 
@@ -393,7 +394,9 @@ def _falling(times: np.ndarray, start: float, end: float) -> np.ndarray:
     """
     span = max(float(times[-1]), 1e-9)
     rate = (end - start) / span
-    return np.sin(2.0 * np.pi * (start * times + 0.5 * rate * times * times))
+    return cast(
+        np.ndarray, np.sin(2.0 * np.pi * (start * times + 0.5 * rate * times * times))
+    )
 
 
 def _envelope(times: np.ndarray, decay: float, attack: float) -> np.ndarray:

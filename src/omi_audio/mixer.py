@@ -47,6 +47,7 @@ import logging
 import math
 import threading
 from collections.abc import Generator
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -581,7 +582,7 @@ class Mixer:
         rule, an unreported permanent silence being worse still.
         """
         warned = False
-        frames = yield memoryview(self._out[:0])
+        frames = yield memoryview(cast(Any, self._out[:0]))
         while True:
             if frames > self._max_block:
                 if not warned:
@@ -593,7 +594,7 @@ class Mixer:
                 block = self._silence_for(frames)
             else:
                 block = self.mix(frames)
-            frames = yield memoryview(block)
+            frames = yield memoryview(cast(Any, block))
 
     def _silence_for(self, frames: int) -> NDArray[np.float32]:
         """A zero block of exactly ``frames`` frames, growing the buffer to fit.
