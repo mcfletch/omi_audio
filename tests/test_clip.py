@@ -216,7 +216,8 @@ class TestRumble:
                               pitch_end=80.0, tone=1.0, decay=0.0, drive=12.0)
         freqs = np.fft.rfftfreq(clean.frames, 1.0 / clean.sample_rate)
         above = (freqs > 150.0) & (freqs < 600.0)
-        share = lambda clip: (np.abs(np.fft.rfft(clip.samples))[above].sum()
+        def share( clip ):
+            return (np.abs(np.fft.rfft(clip.samples))[above].sum()
                               / max(np.abs(np.fft.rfft(clip.samples)).sum(), 1e-12))
         assert share(driven) > share(clean) * 2.0
 
@@ -254,7 +255,7 @@ class TestRumble:
                                           tone=0.0, cutoff=6000.0, tilt=tilt),
                              400.0)
                   for tilt in (0.0, -2.0, -4.0, -6.0)]
-        assert all(more > less for less, more in zip(shares, shares[1:]))
+        assert all(more > less for less, more in zip(shares, shares[1:], strict=False))
 
     def test_a_floor_takes_the_bottom_off_as_the_cutoff_takes_the_top(self):
         """The two together are a band, which is what anything hollow is.
@@ -367,7 +368,7 @@ class TestEcho:
     def test_the_sound_comes_back_quieter_each_time(self):
         echoed = synth.echoed(self.burst(), delay=0.1, level=0.5, taps=3)
         heard = self.peaks(echoed, delay=0.1, taps=3)
-        assert all(later < earlier for earlier, later in zip(heard, heard[1:]))
+        assert all(later < earlier for earlier, later in zip(heard, heard[1:], strict=False))
 
     def test_each_repeat_is_the_level_asked_for(self):
         echoed = synth.echoed(self.burst(), delay=0.1, level=0.5, taps=2)
@@ -421,7 +422,7 @@ class TestEcho:
         step = int(0.1 * rate)
         heard = [self.brightness(echoed.samples[at * step:at * step + int(0.04 * rate)],
                                  rate) for at in range(4)]
-        assert all(later < earlier for earlier, later in zip(heard, heard[1:]))
+        assert all(later < earlier for earlier, later in zip(heard, heard[1:], strict=False))
 
     def test_thinning_takes_the_bottom_out_of_each_repeat(self):
         """The other end, and the reason a return is not a second gunshot.
@@ -438,7 +439,7 @@ class TestEcho:
         step = int(0.1 * rate)
         heard = [self.brightness(echoed.samples[at * step:at * step + int(0.04 * rate)],
                                  rate) for at in range(3)]
-        assert all(later > earlier for earlier, later in zip(heard, heard[1:]))
+        assert all(later > earlier for earlier, later in zip(heard, heard[1:],strict=False))
 
     def test_undamped_repeats_are_the_same_sound_again(self):
         rate = 16000
