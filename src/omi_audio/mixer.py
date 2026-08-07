@@ -65,13 +65,36 @@ DEFAULT_VOICES = 32
 #: 44.1 kHz, which no sane device period exceeds.
 DEFAULT_MAX_BLOCK = 4096
 
-#: How many two-tap averaging stages the muffle filter cascades.  Each stage has
-#: the response ``cos(w/2)``, so four of them are ``cos^4(w/2)``: about -33 dB
-#: near Nyquist and under -0.03 dB at a hundredth of it.  That is the shape of
-#: "heard through water" -- the top gone, the bottom untouched -- and it is
-#: reached with three vector operations per stage and no recursion, which is
-#: what makes it affordable on the audio thread.
-MUFFLE_STAGES = 4
+#: Where the muffle's -3 dB corner sits, **in hertz**.  Everything above it is
+#: progressively gone and everything below comes through, which is what being
+#: underwater does to a sound.
+#:
+#: A frequency rather than a fraction of the sample rate, because "muffled" is a
+#: judgement about the sound and not about the sampling: a corner defined as a
+#: share of Nyquist moves with the rate, so it would land in the middle of the
+#: register at 8 kHz and above everything anyone can hear at 44.1 kHz.
+MUFFLE_CUTOFF_HZ = 450.0
+
+#: How many moving averages the muffle cascades.  Two gives a rolloff steep
+#: enough to be unmistakable -- around -17 dB an octave above the corner -- while
+#: keeping the whole filter to a running sum per stage.
+MUFFLE_STAGES = 2
+
+
+def muffle_taps(sample_rate: float,
+                cutoff: float = MUFFLE_CUTOFF_HZ) -> int:
+    """How long each of the muffle's moving averages is, at ``sample_rate``.
+
+    An ``L``-tap moving average has the response ``sin(Lw/2) / (L sin(w/2))``,
+    which for the frequencies that matter here is ``sin(x)/x`` with
+    ``x = pi f L / rate``.  Two of them cascaded reach -3 dB where
+    ``(sin(x)/x)^2 = 1/sqrt(2)``, and ``sin(x)/x = 2^(-1/4)`` at ``x`` of
+    almost exactly 1 -- so ``L = rate / (pi * cutoff)`` puts the corner on the
+    frequency asked for, whatever the rate.
+
+    At least two taps, since one is not an average at all.
+    """
+    return max(2, int(round(sample_rate / (math.pi * max(cutoff, 1e-6)))))
 
 
 def _finite(value: float) -> float:
@@ -247,11 +270,23 @@ class Mixer:
         self._offsets = np.arange(size, dtype=np.float64)
         #: The unfiltered mix, kept so the muffle can be blended against it.
         self._dry = np.zeros((size, 2), dtype=np.float32)
-        #: Each filter stage's delayed sample, one per channel, carried from one
-        #: block to the next -- without it the filter would restart every block
-        #: and tick at the seam.
-        self._delayed = np.zeros((MUFFLE_STAGES, 2), dtype=np.float32)
-        self._shifted = np.zeros((size, 2), dtype=np.float32)
+        #: How long each of the muffle's moving averages is at this rate, so its
+        #: corner is the same frequency whatever the device runs at.
+        self._muffle_taps = muffle_taps(self.sample_rate)
+        #: The samples each stage needs from the end of the previous block --
+        #: without them the filter would restart every block and tick at the seam.
+        self._muffle_tail = np.zeros(
+            (MUFFLE_STAGES, self._muffle_taps - 1, 2), dtype=np.float32)
+        #: Scratch for one stage: the tail followed by this block, and the
+        #: running sum over it.  The sums are float64 because a running total
+        #: over thousands of frames loses audible precision in float32 -- the
+        #: window is the *difference* of two of them, so the error lands
+        #: undivided in the output.
+        self._muffle_padded = np.zeros(
+            (self._muffle_taps - 1 + size, 2), dtype=np.float64)
+        self._muffle_prefix = np.zeros(
+            (self._muffle_taps + size, 2), dtype=np.float64)
+        self._muffle_window = np.zeros((size, 2), dtype=np.float64)
 
     # ------------------------------------------------------------------
     # Control thread
@@ -410,22 +445,34 @@ class Mixer:
     def _apply_muffle(self, out: NDArray[np.float32], frames: int) -> None:
         """Blend ``out`` towards a low-passed copy of itself, in place.
 
-        The filter is a cascade of two-tap averages -- ``y[n] = (x[n] +
-        x[n-1]) / 2`` -- which is the cheapest thing that is genuinely a
-        low-pass rather than merely quieter.  Each stage needs the sample that
-        fell off the end of the previous block, which is what
-        :attr:`_delayed` carries.
+        Each stage is a moving average over :attr:`_muffle_taps` samples, taken
+        as the difference of a running sum rather than by convolving -- so a
+        window of any length costs the same one pass over the block, and the
+        corner can be put at a frequency (:data:`MUFFLE_CUTOFF_HZ`) instead of
+        wherever a cheap two-tap average happens to land.  Cascading
+        :data:`MUFFLE_STAGES` of them steepens the rolloff.
+
+        Every stage needs the samples that fell off the end of the previous
+        block, which is what :attr:`_muffle_tail` carries.
         """
         dry = self._dry[:frames]
-        shifted = self._shifted[:frames]
         np.copyto(dry, out)
+        taps = self._muffle_taps
+        padded = self._muffle_padded[:taps - 1 + frames]
+        prefix = self._muffle_prefix[:taps + frames]
+        window = self._muffle_window[:frames]
         for stage in range(MUFFLE_STAGES):
-            delayed = self._delayed[stage]
-            shifted[0] = delayed
-            shifted[1:] = out[:frames - 1]
-            np.copyto(delayed, out[frames - 1])
-            np.add(out, shifted, out=out)
-            np.multiply(out, 0.5, out=out)
+            tail = self._muffle_tail[stage]
+            padded[:taps - 1] = tail
+            padded[taps - 1:] = out
+            # prefix[i] is the sum of the first i samples, so the window ending
+            # at output sample i is prefix[i + taps] - prefix[i].
+            prefix[0] = 0.0
+            np.cumsum(padded, axis=0, out=prefix[1:])
+            np.subtract(prefix[taps:], prefix[:frames], out=window)
+            np.multiply(window, 1.0 / taps, out=window)
+            np.copyto(tail, padded[-(taps - 1):], casting='same_kind')
+            np.copyto(out, window, casting='same_kind')
         np.subtract(out, dry, out=out)
         np.multiply(out, self._muffle, out=out)
         np.add(out, dry, out=out)

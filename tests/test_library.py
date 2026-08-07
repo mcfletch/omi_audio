@@ -8,7 +8,7 @@ below are as much about what does **not** happen as about what does.
 import numpy as np
 import pytest
 
-from omi_audio import model, synth
+from omi_audio import formats, model, synth
 from omi_audio.clip import Clip, ClipCache
 from omi_audio.library import AudioLibrary
 
@@ -153,6 +153,97 @@ class TestAsking:
     def test_an_unnamed_entry_still_produces_a_usable_label(self):
         assert AudioLibrary(document(''))._name(0) == 'audio 0'
         assert AudioLibrary(model.AudioDocument())._name(3) == 'audio 3'
+
+
+class TestChoosingACodec:
+    """``OMI_audio_ogg_vorbis`` / ``OMI_audio_opus``: a better encoding, offered.
+
+    The library asks for the best encoding it can decode and keeps the source's
+    own ``audio`` as the fallback the base extension guarantees.  Nothing here
+    needs a real Ogg stream: what is under test is *which* entry is asked for,
+    so the entries hold ordinary ``.wav`` bytes and differ in length.
+    """
+
+    def coded(self, **encodings):
+        """One source offering its ``audio`` plus the alternatives named."""
+        return model.AudioDocument(
+            audio=[model.Audio(uri='shot.mp3'), model.Audio(uri='shot.ogg'),
+                   model.Audio(uri='shot.opus')],
+            sources=[model.AudioSource(audio=0, encodings=dict(encodings))])
+
+    def library(self, document, encodings, fetch=None):
+        made = AudioLibrary(document, cache=ClipCache(sample_rate=RATE),
+                            fetch=fetch or (lambda lib, i, a: lib.supply(i, tone())))
+        made.encodings = tuple(encodings)
+        return made
+
+    def test_a_build_that_decodes_vorbis_asks_for_the_vorbis_entry(self):
+        asks = []
+        library = self.library(self.coded(OMI_audio_ogg_vorbis=1), [formats.VORBIS],
+                               fetch=lambda lib, i, a: (asks.append(i),
+                                                        lib.supply(i, tone())))
+        assert library.clip_for(library.document.sources[0]) is not None
+        assert asks == [1]
+
+    def test_a_build_that_cannot_decode_it_asks_for_the_fallback(self):
+        asks = []
+        library = self.library(self.coded(OMI_audio_ogg_vorbis=1), [],
+                               fetch=lambda lib, i, a: (asks.append(i),
+                                                        lib.supply(i, tone())))
+        assert library.clip_for(library.document.sources[0]) is not None
+        assert asks == [0]
+
+    def test_an_alternative_that_will_not_resolve_falls_back_to_the_mp3(self):
+        """The whole point of the fallback: a bad Ogg costs quality, not sound."""
+        def fetch(library, index, audio):
+            if index == 1:
+                library.fail(index, 'the ogg is not there')
+            else:
+                library.supply(index, tone())
+
+        library = self.library(self.coded(OMI_audio_ogg_vorbis=1),
+                               [formats.VORBIS], fetch=fetch)
+        assert library.clip_for(library.document.sources[0]) is not None
+
+    def test_an_alternative_still_downloading_does_not_start_the_fallback(self):
+        """Falling through on *pending* would play the worse encoding of every
+        sound whose better one simply had not landed yet."""
+        asks = []
+        library = self.library(self.coded(OMI_audio_ogg_vorbis=1), [formats.VORBIS],
+                               fetch=lambda lib, i, a: asks.append(i))
+        assert library.clip_for(library.document.sources[0]) is None
+        assert asks == [1]
+        library.supply(1, tone())
+        assert library.clip_for(library.document.sources[0]) is not None
+        assert asks == [1]
+
+    def test_an_index_outside_the_audio_array_is_skipped_for_the_fallback(self):
+        library = self.library(self.coded(OMI_audio_ogg_vorbis=9), [formats.VORBIS])
+        assert library.clip_for(library.document.sources[0]) is not None
+
+    def test_a_library_decodes_what_this_build_decodes_unless_told_otherwise(self):
+        library = AudioLibrary(self.coded(OMI_audio_ogg_vorbis=1))
+        assert library.encodings == formats.decodable()
+
+    def test_a_source_with_no_alternatives_is_unaffected(self):
+        asks = []
+        library = self.library(self.coded(), formats.ENCODINGS,
+                               fetch=lambda lib, i, a: (asks.append(i),
+                                                        lib.supply(i, tone())))
+        assert library.clip_for(library.document.sources[0]) is not None
+        assert asks == [0]
+
+    @needs_miniaudio
+    def test_the_chosen_entry_is_the_one_whose_samples_come_back(self):
+        """End to end through the real decoder: two entries, two lengths."""
+        short, long = tone(), synth.tone(440.0, 1.5, sample_rate=RATE, fade=0.0)
+        encoded = {0: wav_bytes(short.samples, sample_rate=RATE),
+                   1: wav_bytes(long.samples, sample_rate=RATE)}
+        library = self.library(
+            self.coded(OMI_audio_ogg_vorbis=1), [formats.VORBIS],
+            fetch=lambda lib, i, a: lib.supply_bytes(i, encoded[i]))
+        clip = library.clip_for(library.document.sources[0])
+        assert clip.frames == long.frames
 
 
 class TestSupplying:

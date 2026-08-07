@@ -37,10 +37,11 @@ thread noticing.
 | Module | Job | Depends on |
 |---|---|---|
 | `_backend` | Is `miniaudio` installed? Asked once, answered in one place | — |
-| `model` | `KHR_audio_emitter` as typed records | `spatial` |
+| `formats` | The glTF codec extensions, and which this build decodes | `_backend` |
+| `model` | `KHR_audio_emitter` as typed records | `formats`, `spatial` |
 | `spatial` | Gain curves and the listener's pose | numpy |
 | `clip` | Encoded audio → mono float32, decoded once | `_backend` |
-| `library` | What a document's audio references resolved to | `model`, `clip` |
+| `library` | What a document's audio references resolved to | `model`, `clip`, `formats` |
 | `synth` | Clips made out of arithmetic | `clip` |
 | `mixer` | The voice pool and the block mixing | `clip`, `spatial` |
 | `device` | Where blocks go, and what to do when nowhere | `_backend` |

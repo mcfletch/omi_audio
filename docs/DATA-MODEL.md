@@ -149,16 +149,54 @@ emitters is two sounds, in two places.
 
 ## Codecs
 
-The base extension requires only `audio/mpeg`. `OMI_audio_ogg_vorbis` and
-`OMI_audio_opus` add others, and what can actually be decoded is a separate
-question answered by `omi_audio.clip` — with `miniaudio` installed that is
-`.wav`, `.mp3`, `.ogg` (Vorbis) and `.flac`.
+The base extension requires only `audio/mpeg`. A document that wants a better
+encoding offers it through a codec extension on the **source**, each of which
+names a second entry in the same `audio` array holding the same sound:
 
-The intended pattern is to offer several and take the first that decodes: give
-the better format, fall back to the one everything can play.
+```json
+{"audio": 0, "extensions": {"OMI_audio_ogg_vorbis": {"audio": 1}}}
+```
+
+The source's own `audio` stays as the MP3 fallback, so one document plays
+everywhere and sounds better where the codec is available. `omi_audio.formats`
+holds the two extensions and answers which of them this installation can decode:
+
+| Extension | Container / MIME | Suffix | Decoded by default |
+|---|---|---|---|
+| `OMI_audio_ogg_vorbis` | Ogg, `audio/ogg` | `.ogg` | **yes** |
+| `OMI_audio_opus` | Ogg or WebM, `audio/opus`, `audio/webm` | `.opus`, `.webm` | no |
+
+Both are read, kept and written back unchanged, so a round trip through this
+model loses neither. Only decoding differs: `formats.decodable()` asks the
+backend what formats it reads rather than asserting a list, and `miniaudio`
+reads Vorbis but not Opus. An Opus source therefore plays its MP3 fallback —
+and a document that offers Opus with *no* fallback puts the extension in
+`extensionsRequired`, which is the author saying so.
+
+Choosing happens in the library, and nothing above it has to think about it:
+
+```python
+library.clip_for(source)      # the best encoding it can decode, else the fallback
+```
+
+An application that brings its own decoder sets `library.encodings` — the
+codec extensions to ask for, best first — and the better encoding is fetched
+from then on. `AudioSource.audio_indices(prefer)` is the same choice without a
+library, and `AudioDocument.audio_options(source, prefer)` gives every encoding
+of one sound, best first, for anything displaying what a document contains.
+
+The fallback is only used when the better encoding will not **resolve**; an
+encoding that is merely still downloading is waited for, since falling through
+on "not here yet" would play the worse encoding of every sound whose better one
+had not landed.
+
+An exporter must declare what it uses: `AudioDocument.extensions_used()` gives
+`KHR_audio_emitter` plus whichever codec extensions the sources actually offer.
 
 `decode_bytes` detects the format from the bytes themselves, so a `mimeType`
-that disagrees with the payload does not matter.
+that disagrees with the payload does not matter. What `omi_audio.clip` can
+decode at all, with `miniaudio` installed, is `.wav`, `.mp3`, `.ogg` (Vorbis)
+and `.flac`.
 
 ## What is not in the extension
 

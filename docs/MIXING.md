@@ -99,15 +99,34 @@ It is a resampling ratio, not a pitch shift.
 ## Muffling
 
 `mixer.muffle` runs from 0 (clear) to 1 (underwater) and blends the mix towards
-a low-passed copy of itself. The filter is a cascade of four two-tap averages —
-`y[n] = (x[n] + x[n−1]) / 2` — which is the cheapest thing that is genuinely a
-low-pass rather than merely quieter. Each stage has the response `cos(ω/2)`, so
-four of them are `cos⁴(ω/2)`: about −33 dB near Nyquist and under −0.03 dB at a
-hundredth of it. That is the shape of "heard through water", reached with three
-vector operations per stage and no recursion.
+a low-passed copy of itself.
 
-Each stage carries the sample that fell off the end of the previous block;
-without it the filter would restart every block and tick at the seam.
+The corner is **a frequency**, `MUFFLE_CUTOFF_HZ`, at 450 Hz — not a fraction of
+the sample rate. This matters more than it looks: "muffled" is a judgement about
+the sound, so a corner defined as a share of Nyquist would sit in the middle of
+the register at 8 kHz and above everything audible at 44.1 kHz, which is the
+same filter measuring identically at both rates and being audible at neither.
+
+Each stage is a moving average over `muffle_taps(rate)` samples, taken as the
+difference of a running sum rather than by convolving, so a window of any length
+costs one pass over the block. Two stages are cascaded. An `L`-tap average has
+the response `sin(Lω/2) / (L sin(ω/2))`; two of them reach −3 dB where
+`L = rate / (π × cutoff)`, which is how the tap count is chosen.
+
+At 44.1 kHz that gives:
+
+| Frequency | 100 Hz | 330 Hz | 450 Hz | 660 Hz | 1 kHz | 2 kHz | 4 kHz |
+|---|---|---|---|---|---|---|---|
+| Gain | −0.1 dB | −1.6 dB | −3.0 dB | −6.7 dB | −17.6 dB | −26.5 dB | −59 dB |
+
+The bass comes through and everything above the corner goes, which is what being
+underwater does to a sound — and what makes it a *timbre* change rather than a
+volume change. A pure sine has nothing above its fundamental, so no low-pass can
+do anything to it but change its level; use `synth.tone(..., harmonics=N)` for
+anything meant to demonstrate a filter.
+
+Each stage carries the samples that fell off the end of the previous block;
+without them the filter would restart every block and tick at the seam.
 
 It is a blend rather than a switch so an application can fade it in as a
 listener submerges:

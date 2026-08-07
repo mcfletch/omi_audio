@@ -10,6 +10,7 @@ import threading
 import numpy as np
 import pytest
 
+from omi_audio import mixer as mixermodule
 from omi_audio import synth
 from omi_audio.clip import Clip
 from omi_audio.mixer import Mixer
@@ -644,6 +645,67 @@ class TestMuffle:
         # blend is linear in amplitude and the tone's level is steady.
         assert levels[0.5] == pytest.approx(
             (levels[0.0] + levels[1.0]) / 2.0, rel=0.1)
+
+    def test_the_cutoff_is_a_frequency_not_a_fraction_of_the_sample_rate(self):
+        """What makes the muffle audible at the rate anything actually runs at.
+
+        A filter specified as a fraction of Nyquist measures the same at every
+        sample rate and sounds like nothing at a real one: 3 kHz is most of the
+        way to Nyquist at 8 kHz and a fifteenth of the way there at 44.1 kHz.
+        The corner is in hertz, so it lands in the same musical place either way.
+        """
+        levels = {}
+        for rate in (8000, 44100):
+            tone = synth.tone(mixermodule.MUFFLE_CUTOFF_HZ, 0.5, sample_rate=rate,
+                              amplitude=0.9, fade=0.0)
+            got = []
+            for muffle in (0.0, 1.0):
+                mixer = Mixer(sample_rate=rate, muffle=muffle)
+                mixer.play(tone, gain=1.0, pan=1.0, loop=True)
+                mixer.mix(2048)                         # let the filter settle
+                got.append(float(np.abs(mixer.mix(2048)[:, 1]).max()))
+            levels[rate] = 20.0 * np.log10(got[1] / got[0])
+        for rate, drop in levels.items():
+            assert -6.0 < drop < -1.0, (
+                'at %d Hz the corner frequency should sit near -3 dB, got %.2f dB'
+                % (rate, drop))
+        assert abs(levels[8000] - levels[44100]) < 2.0, (
+            'the corner should be the same frequency at every rate: %r' % (levels,))
+
+    @pytest.mark.parametrize('frequency,least', [
+        (1000.0, 8.0), (2000.0, 12.0), (4000.0, 20.0),
+    ])
+    def test_muffling_is_audible_at_the_rate_content_is_authored_at(
+            self, frequency, least):
+        """The muffle has to be heard, and "heard" is decibels at 44.1 kHz.
+
+        A change under about 1 dB is inaudible, so a filter that only bites near
+        Nyquist is a filter nobody can hear on a real sound: middle-register
+        content is where the energy of most sounds is.
+        """
+        tone = synth.tone(frequency, 0.5, sample_rate=44100, amplitude=0.9, fade=0.0)
+        got = []
+        for muffle in (0.0, 1.0):
+            mixer = Mixer(sample_rate=44100, muffle=muffle)
+            mixer.play(tone, gain=1.0, pan=1.0, loop=True)
+            mixer.mix(2048)
+            got.append(float(np.abs(mixer.mix(2048)[:, 1]).max()))
+        drop = -20.0 * np.log10(got[1] / got[0])
+        assert drop > least, (
+            '%g Hz should lose at least %g dB when muffled, lost %.2f dB'
+            % (frequency, least, drop))
+
+    def test_the_bass_still_comes_through(self):
+        """Underwater is the top gone, not the whole mix turned down.  A muffle
+        that attenuated everything equally would be a volume knob."""
+        tone = synth.tone(100.0, 0.5, sample_rate=44100, amplitude=0.9, fade=0.0)
+        got = []
+        for muffle in (0.0, 1.0):
+            mixer = Mixer(sample_rate=44100, muffle=muffle)
+            mixer.play(tone, gain=1.0, pan=1.0, loop=True)
+            mixer.mix(2048)
+            got.append(float(np.abs(mixer.mix(2048)[:, 1]).max()))
+        assert got[1] == pytest.approx(got[0], rel=0.1)
 
     def test_the_muffle_is_clamped_to_a_sensible_range(self):
         mixer = Mixer(sample_rate=8000)

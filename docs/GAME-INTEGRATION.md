@@ -173,6 +173,11 @@ copy of itself — it is a float rather than a switch so you can fade it in:
 engine.muffle = min(1.0, depth_below_surface / 0.5)
 ```
 
+The corner is at 450 Hz, so the bass comes through and everything above it goes;
+see [MIXING.md](MIXING.md#muffling) for the response. It has nothing to take
+away from a bare sine, so a sound meant to *show* the effect wants
+`synth.tone(..., harmonics=N)`.
+
 ## Loading a glTF scene
 
 ```python
@@ -226,7 +231,43 @@ is how this package's own suite tests levels at particular positions — see
 `tests/test_output_level.py` for the pattern.
 
 `omi_audio.synth` exists so that a demo or a test needs no assets and no
-licences: tones, chirps, noise and impacts, made out of arithmetic.
+licences: tones, chirps, noise, impacts and rumbles, made out of arithmetic.
+
+The last two are a pair, and which one a sound wants is decided by where in the
+spectrum it belongs. `impact` is noise under a decay: bright at any length, so
+it makes a crack, a tap or a hiss. `rumble` is the bottom of the range — noise
+with the top rolled away, over a tone that falls as it goes, optionally
+saturated — which is what a motor, a detonation and distant thunder are made
+of, and what noise alone can never be however loud it is played.
+
+```python
+engine.clips.put('bang', synth.rumble(1.1, decay=2.6, cutoff=180.0,
+                                      pitch=78.0, pitch_end=26.0, drive=4.5))
+```
+
+**Weight comes from `tilt`, not from `tone`**, and this is the trap worth
+naming: a low sine under a hard attack is a *drum*, and one that falls as it
+goes is a drum being tuned. That is what a listener hears whenever the tone is
+carrying the bottom end, however small its share of the mix — a rifle built
+that way sounds like a tom, not like a rifle. `tilt` leans the *noise* toward
+the bottom instead, in decibels per octave, which is what a blast is. Keep
+`tone` for things genuinely meant to have a note in them.
+
+```python
+crack = synth.rumble(0.22, decay=55.0, cutoff=9000.0, tone=0.0, tilt=-1.2)
+engine.clips.put('rifle', synth.echoed(crack, delay=0.16, level=0.42,
+                                       damping=6000.0, thinning=200.0))
+```
+
+`echoed` puts quieter copies behind a sound, which is the cheapest thing that
+says *this happened somewhere*. `damping` and `thinning` are why a return is
+heard as the sound coming back rather than as the sound happening twice.
+
+`cutoff` and `floor` are the top and bottom edges of a rumble's noise, and the
+two together are a band — which is what anything hollow is, a tube or a shell
+or a pipe. And a rumble whose `tone` is 1 with `pitch` *below* `pitch_end` is a
+rising chirp with no noise in it at all, which is a bubble popping: a cavity
+that is closing gets smaller, and something smaller rings higher.
 
 ## What is not here
 

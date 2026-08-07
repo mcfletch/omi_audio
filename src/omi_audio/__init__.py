@@ -16,6 +16,8 @@ The pieces, in the order sound travels through them:
                            sources, emitters and their positional properties.
 :mod:`~.clip`              Encoded audio decoded to mono float32 samples, from a
                            file or from bytes, cached by name.
+:mod:`~.formats`           The glTF codec extensions a document may offer a sound
+                           in, and which of them this build can decode.
 :mod:`~.library`           What a document's audio references have resolved to,
                            and the seam where the application -- never this
                            library -- decides what a ``uri`` is allowed to mean.
@@ -70,7 +72,7 @@ from omi_audio import clip, device, engine, library, mixer, model, spatial, synt
 
 #: An alpha release, and the trove classifier and the version string agree
 #: about it.  See ``CHANGELOG.md``.
-__version__ = '0.1.0a1'
+__version__ = '0.2.0a1'
 
 __all__ = [
     'EXTENSION', 'Audio', 'AudioDevice', 'AudioDocument', 'AudioEmitter',

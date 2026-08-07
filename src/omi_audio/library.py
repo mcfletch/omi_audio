@@ -60,7 +60,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from omi_audio import model
+from omi_audio import formats, model
 from omi_audio.clip import Clip, ClipCache, DecodeError, decode_bytes
 
 log = logging.getLogger(__name__)
@@ -96,6 +96,11 @@ class AudioLibrary:
         #: engine's own cache so two documents naming one file decode once.
         self.cache = cache if cache is not None else ClipCache()
         self.fetch = fetch
+        #: The codec extensions this library will ask for, best first.  Defaults
+        #: to what the decoding backend reads; an application that brings its own
+        #: decoder -- an Opus one, say -- sets it and gets the better encoding
+        #: asked for from then on.
+        self.encodings: tuple[formats.Encoding, ...] = formats.decodable()
         self._clips: dict[int, Clip] = {}
         self._failed: dict[int, str] = {}
         self._requested: set[int] = set()
@@ -148,9 +153,31 @@ class AudioLibrary:
         self.fetch(self, index, self.document.audio[index])
         return self._clips.get(index)
 
+    def failed(self, index: int) -> bool:
+        """Whether ``index`` has been given up on, so nothing will ask again."""
+        return index in self._failed
+
     def clip_for(self, source: model.AudioSource) -> Clip | None:
-        """The clip a :class:`~omi_audio.model.AudioSource` plays, if any."""
-        return self.clip(source.audio)
+        """The clip a :class:`~omi_audio.model.AudioSource` plays, if any.
+
+        Where the document offers the sound in a better codec through
+        :mod:`omi_audio.formats`, the best encoding this library can decode is
+        what gets asked for, and the source's own ``audio`` is the fallback if
+        that one will not resolve -- a broken Ogg then costs quality rather than
+        the sound, which is what the codec extensions exist to make possible.
+
+        An encoding that has been *asked for and not yet delivered* stops the
+        search rather than falling through: an unfinished download is not a
+        failure, and treating it as one would play the worse encoding of every
+        sound whose better one merely had not landed yet.
+        """
+        for index in self.document.audio_indices_for(source, self.encodings):
+            found = self.clip(index)
+            if found is not None:
+                return found
+            if not self.failed(index):
+                return None
+        return None
 
     # ------------------------------------------------------------------
     # Supplying

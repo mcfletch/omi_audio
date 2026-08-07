@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from omi_audio import model, spatial
+from omi_audio import formats, model, spatial
 
 
 TAU = 2.0 * math.pi
@@ -391,3 +391,86 @@ class TestResolvingSources:
             sources=[model.AudioSource()],
             emitters=[model.AudioEmitter(sources=[0, 7])])
         assert len(document.sources_for(document.emitters[0])) == 1
+
+
+class TestCodecExtensions:
+    """``OMI_audio_ogg_vorbis`` and ``OMI_audio_opus`` on a source."""
+
+    BLOCK = {
+        'audio': [{'uri': 'shot.mp3'}, {'uri': 'shot.ogg'}, {'uri': 'shot.opus'}],
+        'sources': [{'audio': 0, 'extensions': {
+            'OMI_audio_ogg_vorbis': {'audio': 1},
+            'OMI_audio_opus': {'audio': 2}}}],
+    }
+
+    def test_a_source_records_what_each_extension_offers(self):
+        document = model.from_gltf(self.BLOCK)
+        assert document.sources[0].encodings == {
+            'OMI_audio_ogg_vorbis': 1, 'OMI_audio_opus': 2}
+
+    def test_a_source_without_them_offers_nothing(self):
+        document = model.from_gltf({'sources': [{'audio': 0}]})
+        assert document.sources[0].encodings == {}
+
+    def test_the_extensions_survive_a_round_trip(self):
+        document = model.from_gltf(self.BLOCK)
+        assert model.from_gltf(model.to_gltf(document)) == document
+
+    def test_the_extensions_are_written_where_the_specification_puts_them(self):
+        document = model.from_gltf(self.BLOCK)
+        assert model.to_gltf(document)['sources'] == [self.BLOCK['sources'][0]]
+
+    def test_a_source_offering_nothing_writes_no_extensions_object(self):
+        document = model.AudioDocument(sources=[model.AudioSource(audio=0)])
+        assert model.to_gltf(document)['sources'] == [{'audio': 0}]
+
+    def test_the_written_extensions_share_no_state_with_the_model(self):
+        document = model.from_gltf(self.BLOCK)
+        block = model.to_gltf(document)
+        block['sources'][0]['extensions']['OMI_audio_ogg_vorbis']['audio'] = 99
+        assert document.sources[0].encodings['OMI_audio_ogg_vorbis'] == 1
+
+    def test_a_documents_extension_names_are_offered_to_an_exporter(self):
+        """An exporter has to declare these in ``extensionsUsed``."""
+        document = model.from_gltf(self.BLOCK)
+        assert document.extensions_used() == (
+            'KHR_audio_emitter', 'OMI_audio_opus', 'OMI_audio_ogg_vorbis')
+
+    def test_a_plain_document_declares_only_the_base_extension(self):
+        document = model.from_gltf({'sources': [{'audio': 0}]})
+        assert document.extensions_used() == ('KHR_audio_emitter',)
+
+
+class TestResolvingAnEncoding:
+    """Which entry of the ``audio`` array a source actually plays."""
+
+    def document(self):
+        return model.from_gltf(TestCodecExtensions.BLOCK)
+
+    def test_with_no_codec_support_the_fallback_is_the_answer(self):
+        document = self.document()
+        assert document.audio_for(document.sources[0]).uri == 'shot.mp3'
+
+    def test_a_supported_codec_wins(self):
+        document = self.document()
+        chosen = document.audio_for(document.sources[0], [formats.VORBIS])
+        assert chosen.uri == 'shot.ogg'
+
+    def test_every_encoding_is_offered_most_preferred_first(self):
+        document = self.document()
+        options = document.audio_options(document.sources[0], formats.ENCODINGS)
+        assert [entry.uri for entry in options] == [
+            'shot.opus', 'shot.ogg', 'shot.mp3']
+
+    def test_an_extension_pointing_outside_the_audio_array_is_skipped(self):
+        document = model.from_gltf({
+            'audio': [{'uri': 'shot.mp3'}],
+            'sources': [{'audio': 0, 'extensions': {
+                'OMI_audio_ogg_vorbis': {'audio': 7}}}]})
+        assert document.audio_indices_for(document.sources[0],
+                                          [formats.VORBIS]) == [0]
+
+    def test_a_source_naming_nothing_at_all_resolves_to_nothing(self):
+        document = model.AudioDocument(audio=[model.Audio(uri='shot.mp3')],
+                                       sources=[model.AudioSource()])
+        assert document.audio_options(document.sources[0], formats.ENCODINGS) == []

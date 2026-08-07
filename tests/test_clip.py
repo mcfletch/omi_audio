@@ -77,6 +77,48 @@ class TestSynth:
         assert abs(float(clip.samples[0])) < 1e-3
         assert abs(float(clip.samples[-1])) < 1e-3
 
+    def test_a_tone_is_a_pure_sine_by_default(self):
+        """One partial and nothing above it, which is what a sine is."""
+        clip = synth.tone(500.0, 0.5, sample_rate=16000, fade=0.0)
+        spectrum = np.abs(np.fft.rfft(clip.samples))
+        freqs = np.fft.rfftfreq(clip.frames, 1.0 / clip.sample_rate)
+        above = spectrum[freqs > 750.0].max()
+        assert above < spectrum.max() * 0.01
+
+    def test_harmonics_put_energy_above_the_fundamental(self):
+        """A low-pass can only change the *level* of a sine, never its timbre --
+        there is nothing above the fundamental for it to take away.  Anything
+        demonstrating a filter needs partials."""
+        clip = synth.tone(500.0, 0.5, sample_rate=16000, fade=0.0, harmonics=4)
+        spectrum = np.abs(np.fft.rfft(clip.samples))
+        freqs = np.fft.rfftfreq(clip.frames, 1.0 / clip.sample_rate)
+        for partial in (2, 3, 4):
+            near = np.abs(freqs - 500.0 * partial) < 20.0
+            assert spectrum[near].max() > spectrum.max() * 0.1, (
+                'partial %d is missing' % partial)
+
+    def test_harmonics_keep_the_fundamental_the_strongest_partial(self):
+        clip = synth.tone(500.0, 0.5, sample_rate=16000, fade=0.0, harmonics=6)
+        spectrum = np.abs(np.fft.rfft(clip.samples))
+        freqs = np.fft.rfftfreq(clip.frames, 1.0 / clip.sample_rate)
+        assert freqs[spectrum.argmax()] == pytest.approx(500.0, abs=5.0)
+
+    def test_harmonics_do_not_push_the_clip_past_full_scale(self):
+        """Summed partials would clip if the amplitude were not shared out."""
+        clip = synth.tone(500.0, 0.5, sample_rate=16000, amplitude=0.9,
+                          harmonics=8)
+        assert float(np.abs(clip.samples).max()) <= 0.9 + 1e-6
+
+    def test_a_partial_above_nyquist_is_left_out_rather_than_aliased(self):
+        """A partial that will not fit folds back as an out-of-tune whistle."""
+        clip = synth.tone(3000.0, 0.5, sample_rate=16000, fade=0.0, harmonics=6)
+        spectrum = np.abs(np.fft.rfft(clip.samples))
+        freqs = np.fft.rfftfreq(clip.frames, 1.0 / clip.sample_rate)
+        # 3rd partial (9 kHz) and up exceed the 8 kHz Nyquist; nothing may
+        # appear at the frequencies they would alias to (16000 - 9000 = 7 kHz).
+        near = np.abs(freqs - 7000.0) < 50.0
+        assert spectrum[near].max() < spectrum.max() * 0.01
+
     def test_noise_is_broadband_and_bounded(self):
         clip = synth.noise(0.2, sample_rate=8000, seed=7)
         assert float(np.abs(clip.samples).max()) <= 1.0
@@ -98,6 +140,7 @@ class TestSynth:
         for clip in (synth.chirp(200.0, 2000.0, 0.0, sample_rate=8000),
                      synth.noise(0.0, sample_rate=8000),
                      synth.impact(0.0, sample_rate=8000),
+                     synth.rumble(0.0, sample_rate=8000),
                      synth.silence(0.0, sample_rate=8000)):
             assert clip.frames == 0
 
@@ -108,6 +151,303 @@ class TestSynth:
         high = np.abs(np.fft.rfft(clip.samples[half:]))
         freqs = np.fft.rfftfreq(half, 1.0 / clip.sample_rate)
         assert freqs[low.argmax()] < freqs[high.argmax()]
+
+
+def centroid(clip):
+    """The centre of gravity of a clip's spectrum, in hertz.
+
+    One number for "how bright is this", which is the property a rumble is
+    defined by and the one a listener names first.
+    """
+    spectrum = np.abs(np.fft.rfft(clip.samples))
+    freqs = np.fft.rfftfreq(clip.frames, 1.0 / clip.sample_rate)
+    return float((freqs * spectrum).sum() / max(spectrum.sum(), 1e-12))
+
+
+class TestRumble:
+    """The low end: a motor, and the thump of something going off.
+
+    :func:`~omi_audio.synth.impact` is white noise, so it is a *crack*
+    however long it is left to decay -- there is nothing below a few kilohertz
+    in it to hear.  A rumble is the other half of the range: noise with the
+    top taken off, over a tone that falls as it goes, which is what an
+    explosion is made of.
+    """
+
+    def test_it_is_far_lower_than_an_impact(self):
+        low = synth.rumble(0.5, sample_rate=16000, seed=1)
+        bright = synth.impact(0.5, sample_rate=16000, seed=1)
+        assert centroid(low) < centroid(bright) * 0.25
+
+    def test_the_cutoff_is_what_decides_how_low(self):
+        """Declared in hertz, and it means what it says."""
+        deep = synth.rumble(0.5, sample_rate=16000, seed=1, cutoff=120.0)
+        wider = synth.rumble(0.5, sample_rate=16000, seed=1, cutoff=900.0)
+        assert centroid(deep) < centroid(wider)
+
+    def test_its_body_falls_in_pitch_as_it_goes(self):
+        """What makes a bang read as a bang rather than as a hum."""
+        clip = synth.rumble(0.8, sample_rate=16000, seed=1, pitch=90.0,
+                            pitch_end=30.0, decay=0.5, tone=1.0)
+        half = clip.frames // 2
+        freqs = np.fft.rfftfreq(half, 1.0 / clip.sample_rate)
+        first = np.abs(np.fft.rfft(clip.samples[:half]))
+        second = np.abs(np.fft.rfft(clip.samples[half:]))
+        assert freqs[second.argmax()] < freqs[first.argmax()]
+
+    def test_it_decays_to_silence(self):
+        clip = synth.rumble(0.6, sample_rate=16000, seed=1, decay=8.0)
+        head = float(np.abs(clip.samples[:200]).mean())
+        tail = float(np.abs(clip.samples[-200:]).mean())
+        assert tail < head * 0.1
+
+    def test_an_attack_starts_it_softly(self):
+        """A motor spooling up, rather than a hit.  Zero is the hit."""
+        soft = synth.rumble(0.5, sample_rate=16000, seed=1, attack=0.15)
+        hard = synth.rumble(0.5, sample_rate=16000, seed=1, attack=0.0)
+        assert float(np.abs(soft.samples[:100]).mean()) \
+            < float(np.abs(hard.samples[:100]).mean()) * 0.5
+
+    def test_drive_puts_harmonics_over_the_body_tone(self):
+        """The growl: a saturated tone has partials a clean one has not."""
+        clean = synth.rumble(0.5, sample_rate=16000, seed=1, pitch=80.0,
+                             pitch_end=80.0, tone=1.0, decay=0.0, drive=1.0)
+        driven = synth.rumble(0.5, sample_rate=16000, seed=1, pitch=80.0,
+                              pitch_end=80.0, tone=1.0, decay=0.0, drive=12.0)
+        freqs = np.fft.rfftfreq(clean.frames, 1.0 / clean.sample_rate)
+        above = (freqs > 150.0) & (freqs < 600.0)
+        share = lambda clip: (np.abs(np.fft.rfft(clip.samples))[above].sum()
+                              / max(np.abs(np.fft.rfft(clip.samples)).sum(), 1e-12))
+        assert share(driven) > share(clean) * 2.0
+
+    def test_it_never_goes_past_the_amplitude_asked_for(self):
+        """Two sources and a saturator, so the sum has to be brought back."""
+        clip = synth.rumble(0.5, sample_rate=16000, seed=1, amplitude=0.8,
+                            drive=20.0)
+        assert float(np.abs(clip.samples).max()) <= 0.8 + 1e-6
+
+    def test_it_is_reproducible_from_its_seed(self):
+        first = synth.rumble(0.2, sample_rate=8000, seed=3)
+        second = synth.rumble(0.2, sample_rate=8000, seed=3)
+        assert np.array_equal(first.samples, second.samples)
+
+    def under(self, clip, hertz):
+        spectrum = np.abs(np.fft.rfft(clip.samples)) ** 2
+        freqs = np.fft.rfftfreq(clip.frames, 1.0 / clip.sample_rate)
+        return float(spectrum[freqs < hertz].sum() / max(spectrum.sum(), 1e-20))
+
+    def test_tilt_moves_the_noise_energy_downward(self):
+        """A blast is not white: its noise rises toward the bottom.
+
+        This is the difference between weight and *pitch*.  Weight from a tone
+        is a drum however quiet the tone is -- a low sine with a hard attack is
+        exactly what a drum is -- and weight from noise is a thump.
+        """
+        white = synth.rumble(0.2, sample_rate=16000, seed=5, tone=0.0,
+                             cutoff=6000.0)
+        tilted = synth.rumble(0.2, sample_rate=16000, seed=5, tone=0.0,
+                              cutoff=6000.0, tilt=-4.0)
+        assert self.under(tilted, 400.0) > self.under(white, 400.0) * 3.0
+
+    def test_more_tilt_is_more_of_it(self):
+        shares = [self.under(synth.rumble(0.2, sample_rate=16000, seed=5,
+                                          tone=0.0, cutoff=6000.0, tilt=tilt),
+                             400.0)
+                  for tilt in (0.0, -2.0, -4.0, -6.0)]
+        assert all(more > less for less, more in zip(shares, shares[1:]))
+
+    def test_a_floor_takes_the_bottom_off_as_the_cutoff_takes_the_top(self):
+        """The two together are a band, which is what anything hollow is.
+
+        A tube resonates at a pitch and has very little under it; without a
+        bottom edge the same sound is a thump with the tube missing.
+        """
+        wide = synth.rumble(0.2, sample_rate=16000, seed=6, tone=0.0,
+                            cutoff=500.0)
+        banded = synth.rumble(0.2, sample_rate=16000, seed=6, tone=0.0,
+                              cutoff=500.0, floor=250.0)
+        assert self.under(banded, 150.0) < self.under(wide, 150.0) * 0.5
+        assert self.under(banded, 800.0) > 0.7      # and still down there
+
+    def test_no_floor_is_the_noise_it_always_was(self):
+        assert np.array_equal(
+            synth.rumble(0.2, sample_rate=8000, seed=5, floor=0.0).samples,
+            synth.rumble(0.2, sample_rate=8000, seed=5).samples)
+
+    def test_no_tilt_is_the_noise_it_always_was(self):
+        assert np.array_equal(
+            synth.rumble(0.2, sample_rate=8000, seed=5, tilt=0.0).samples,
+            synth.rumble(0.2, sample_rate=8000, seed=5).samples)
+
+
+class TestReverberation:
+    """A dense tail rather than a handful of returns.
+
+    The difference is not subtle and it is not a matter of degree: discrete
+    repeats are heard as *repeats* -- a clap, and then another clap -- and a
+    room is heard as one sound going on.  A rifle recorded outdoors keeps
+    within a few decibels of its peak for the better part of a second and
+    darkens as it goes, and nothing built out of three taps can be that.
+
+    Baked into the clip at the moment it is made, so this costs the audio
+    thread nothing and is not the bus effect the mixer still does not have.
+    """
+
+    def burst(self, rate=16000):
+        return synth.impact(0.02, sample_rate=rate, seed=1, decay=200.0)
+
+    def level(self, clip, when, window=0.03):
+        at = int(when * clip.sample_rate)
+        part = clip.samples[at:at + int(window * clip.sample_rate)]
+        return float(np.sqrt((part.astype('d') ** 2).mean())) if len(part) else 0.0
+
+    def brightness(self, clip, when, window=0.06):
+        at = int(when * clip.sample_rate)
+        part = clip.samples[at:at + int(window * clip.sample_rate)]
+        spectrum = np.abs(np.fft.rfft(part)) ** 2
+        freqs = np.fft.rfftfreq(len(part), 1.0 / clip.sample_rate)
+        return float((freqs * spectrum).sum() / max(spectrum.sum(), 1e-20))
+
+    def test_the_sound_goes_on_after_it_has_stopped(self):
+        wet = synth.reverberated(self.burst(), seconds=0.6, level=0.7, seed=2)
+        assert self.level(wet, 0.3) > self.level(wet, 0.02) * 0.02
+
+    def test_it_dies_away_rather_than_holding(self):
+        wet = synth.reverberated(self.burst(), seconds=0.4, level=0.7, seed=2)
+        assert self.level(wet, 0.35) < self.level(wet, 0.10)
+
+    def test_a_longer_tail_is_still_going_when_a_shorter_one_has_gone(self):
+        short = synth.reverberated(self.burst(), seconds=0.25, level=0.7, seed=2)
+        long = synth.reverberated(self.burst(), seconds=0.9, level=0.7, seed=2)
+        assert self.level(long, 0.4) > self.level(short, 0.4) * 3.0
+
+    def test_the_tail_darkens_as_it_goes(self):
+        """Air and soft surfaces take the top first, which is what makes it a room."""
+        wet = synth.reverberated(self.burst(), seconds=0.9, level=0.8, seed=2)
+        assert self.brightness(wet, 0.5) < self.brightness(wet, 0.05)
+
+    def test_it_never_makes_a_sound_louder(self):
+        dry = synth.rumble(0.2, sample_rate=16000, seed=3, amplitude=0.9)
+        wet = synth.reverberated(dry, seconds=0.5, level=1.0, seed=2)
+        assert float(np.abs(wet.samples).max()) \
+            <= float(np.abs(dry.samples).max()) + 1e-6
+
+    def test_no_level_is_the_clip_itself(self):
+        dry = self.burst()
+        assert synth.reverberated(dry, seconds=0.5, level=0.0) is dry
+
+    def test_a_clip_with_no_frames_survives_it(self):
+        assert synth.reverberated(synth.silence(0.0, sample_rate=8000),
+                                  seconds=0.4, level=0.5).frames == 0
+
+    def test_it_is_reproducible_from_its_seed(self):
+        first = synth.reverberated(self.burst(), seconds=0.3, level=0.6, seed=4)
+        second = synth.reverberated(self.burst(), seconds=0.3, level=0.6, seed=4)
+        assert np.array_equal(first.samples, second.samples)
+
+
+class TestEcho:
+    """A sound repeating quieter, which is the cheapest thing that says *space*.
+
+    Not reverb -- there is no room here to model -- but a slap-back, which is
+    what a hard, sharp sound in a large place actually gives back and what tells
+    a listener that the sound was hard in the first place.
+    """
+
+    def burst(self, rate=8000):
+        """A short hit, over well before any echo of it starts."""
+        return synth.impact(0.02, sample_rate=rate, seed=1, decay=200.0)
+
+    def peaks(self, clip, delay, taps):
+        """The loudest sample in the window each repeat lands in."""
+        step = int(delay * clip.sample_rate)
+        return [float(np.abs(clip.samples[at * step:(at + 1) * step]).max())
+                for at in range(taps + 1)]
+
+    def test_the_sound_comes_back_quieter_each_time(self):
+        echoed = synth.echoed(self.burst(), delay=0.1, level=0.5, taps=3)
+        heard = self.peaks(echoed, delay=0.1, taps=3)
+        assert all(later < earlier for earlier, later in zip(heard, heard[1:]))
+
+    def test_each_repeat_is_the_level_asked_for(self):
+        echoed = synth.echoed(self.burst(), delay=0.1, level=0.5, taps=2)
+        first, second, third = self.peaks(echoed, delay=0.1, taps=2)
+        assert second == pytest.approx(first * 0.5, rel=0.02)
+        assert third == pytest.approx(first * 0.25, rel=0.02)
+
+    def test_the_repeats_arrive_when_they_are_asked_to(self):
+        rate = 8000
+        echoed = synth.echoed(self.burst(rate), delay=0.05, level=0.6, taps=1)
+        quiet = echoed.samples[int(0.03 * rate):int(0.045 * rate)]
+        assert float(np.abs(quiet).max()) < 1e-4      # nothing in between
+        assert float(np.abs(echoed.samples[int(0.05 * rate):]).max()) > 0.01
+
+    def test_it_makes_room_for_the_tail(self):
+        original = self.burst()
+        echoed = synth.echoed(original, delay=0.1, level=0.5, taps=3)
+        assert echoed.duration > original.duration + 0.29
+
+    def test_an_echo_never_makes_a_sound_louder(self):
+        """Overlapping repeats must not push a clip past where it started."""
+        original = synth.rumble(0.4, sample_rate=8000, seed=2, amplitude=0.9)
+        echoed = synth.echoed(original, delay=0.02, level=0.9, taps=6)
+        assert float(np.abs(echoed.samples).max()) \
+            <= float(np.abs(original.samples).max()) + 1e-6
+
+    def test_no_level_is_the_clip_itself(self):
+        """So a voice that declares no echo pays nothing and is unchanged."""
+        original = self.burst()
+        assert synth.echoed(original, delay=0.1, level=0.0) is original
+
+    def test_a_clip_with_no_frames_survives_it(self):
+        assert synth.echoed(synth.silence(0.0, sample_rate=8000),
+                            delay=0.1, level=0.5).frames == 0
+
+    def test_the_rate_is_kept(self):
+        echoed = synth.echoed(self.burst(22050), delay=0.05, level=0.5)
+        assert echoed.sample_rate == 22050
+
+    def brightness(self, samples, rate):
+        spectrum = np.abs(np.fft.rfft(samples)) ** 2
+        freqs = np.fft.rfftfreq(len(samples), 1.0 / rate)
+        return float((freqs * spectrum).sum() / max(spectrum.sum(), 1e-20))
+
+    def test_damping_darkens_each_repeat(self):
+        """Air and soft surfaces take the top off, and take more of it each time."""
+        rate = 16000
+        source = synth.noise(0.04, sample_rate=rate, seed=4, amplitude=0.8)
+        echoed = synth.echoed(source, delay=0.1, level=0.9, taps=3,
+                              damping=900.0)
+        step = int(0.1 * rate)
+        heard = [self.brightness(echoed.samples[at * step:at * step + int(0.04 * rate)],
+                                 rate) for at in range(4)]
+        assert all(later < earlier for earlier, later in zip(heard, heard[1:]))
+
+    def test_thinning_takes_the_bottom_out_of_each_repeat(self):
+        """The other end, and the reason a return is not a second gunshot.
+
+        What makes a report *heavy* is a near-field thump that never comes
+        back off anything; a repeat carrying it reads as somebody firing again
+        rather than as the first shot answering.
+        """
+        rate = 16000
+        source = synth.rumble(0.04, sample_rate=rate, seed=4, cutoff=3000.0,
+                              pitch=60.0, pitch_end=60.0, tone=0.5)
+        echoed = synth.echoed(source, delay=0.1, level=0.9, taps=2,
+                              thinning=600.0)
+        step = int(0.1 * rate)
+        heard = [self.brightness(echoed.samples[at * step:at * step + int(0.04 * rate)],
+                                 rate) for at in range(3)]
+        assert all(later > earlier for earlier, later in zip(heard, heard[1:]))
+
+    def test_undamped_repeats_are_the_same_sound_again(self):
+        rate = 16000
+        source = synth.noise(0.04, sample_rate=rate, seed=4, amplitude=0.8)
+        echoed = synth.echoed(source, delay=0.1, level=0.9, taps=1)
+        step = int(0.1 * rate)
+        first = self.brightness(echoed.samples[:int(0.04 * rate)], rate)
+        second = self.brightness(echoed.samples[step:step + int(0.04 * rate)], rate)
+        assert second == pytest.approx(first, rel=0.05)
 
 
 class TestDecode:

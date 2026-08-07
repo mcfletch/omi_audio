@@ -7,6 +7,48 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
 
 ## [Unreleased]
 
+### Added
+
+- `synth.rumble` — the low end of the range: noise with the top rolled away
+  over a tone that falls as it goes, optionally saturated. `synth.impact` is
+  white noise and is therefore bright however long it decays, so a detonation
+  or a motor built from it comes out as a crack; this is the generator those
+  want. `cutoff`, `pitch`/`pitch_end`, `tone`, `drive`, `tilt` and `attack`
+  are its numbers, and the level is normalised afterwards so driving a sound
+  makes it dirtier and never louder.
+
+  **`tilt` is where weight should come from**, in decibels per octave: it
+  leans the noise toward the bottom, which is what a blast, a motor and
+  thunder are. Weight from `tone` is a different sound and usually the wrong
+  one — a low sine under a hard attack is a *drum*, and one that falls as it
+  goes is a drum being tuned, which is what it reads as however small a share
+  of the mix it has. Reach for `tone` when something is meant to have a note
+  in it.
+
+  `cutoff` and `floor` are the top and the bottom edges of its noise, and the
+  two together are a **band** — which is what anything hollow is. A tube rings
+  around a pitch and has almost nothing underneath it, and that is the
+  difference between the pop of a mortar and a thump.
+
+- `synth.reverberated` — the tail of a room, baked into a clip when it is
+  made. **Not a stronger `echoed`**: discrete returns are heard as returns —
+  a clap, and then another clap — where a room is heard as one sound going
+  on, and a short bright report with no tail reads as a *drum* however its
+  spectrum is arranged. Three bands decaying at their own rates, with the
+  middle outlasting both the bottom and the top, because that is what
+  distance does to a sound. Nothing here runs on the audio thread and the
+  mixer still has no reverb bus; what it has is clips that already sound like
+  they happened somewhere.
+
+- `synth.echoed` — a clip with quieter copies of itself behind it. A
+  slap-back rather than reverb: there is no room modelled here, and what a
+  hard sound in a large place gives back is a handful of discrete returns.
+  `damping` and `thinning` take the top and the bottom off each repeat in
+  turn, which is what stops a return sounding like the same event happening
+  again: air takes the high end as the sound travels, and a near-field thump
+  never comes back off anything at all. The result is never louder than what
+  it was given.
+
 ## [0.1.0a1] — 2026-07-31
 
 **Initial public release.** An alpha: the API may still move

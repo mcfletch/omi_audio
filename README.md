@@ -90,10 +90,11 @@ In the order sound travels through them:
 | Module | Answers |
 |---|---|
 | `model` | `KHR_audio_emitter` as typed records, with the extension's own field names and defaults; `from_gltf`/`to_gltf` round-trip, and the node/scene references that say where an emitter *is* |
+| `formats` | The glTF codec extensions — `OMI_audio_ogg_vorbis` and `OMI_audio_opus` — and which of them this installation can actually decode |
 | `library` | What a document's audio references have resolved to — the seam where **your** resolver, not this library, decides what a `uri` means |
 | `spatial` | Every gain curve — three glTF distance models, the Web Audio cone, VRML97's two ellipsoids, equal-power panning — and the listener's pose |
 | `clip` | Encoded audio → mono float32 at one rate, from a file or from bytes (`.glb` buffer views, `data:` URIs, downloads), decoded once |
-| `synth` | Tones, chirps, noise and impacts made out of arithmetic, so demos and tests need no assets and no licences |
+| `synth` | Tones, chirps, noise, impacts and rumbles made out of arithmetic, so demos and tests need no assets and no licences |
 | `mixer` | A fixed voice pool summed into stereo blocks: allocation-free, lock-free on the audio thread, priority stealing, gain ramping, an underwater low-pass |
 | `device` | Where blocks go — `miniaudio`, or silence |
 | `engine` | The one object an application holds |

@@ -34,6 +34,11 @@ The data model
 
 .. automodule:: omi_audio.model
 
+Codec extensions
+----------------
+
+.. automodule:: omi_audio.formats
+
 Resolving a document's audio
 ----------------------------
 

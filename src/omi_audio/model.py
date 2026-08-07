@@ -42,9 +42,9 @@ from dataclasses import dataclass, field, fields
 from functools import cache
 from types import UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
-from omi_audio import spatial
+from omi_audio import formats, spatial
 
 log = logging.getLogger(__name__)
 
@@ -57,9 +57,10 @@ GLOBAL = 'global'
 #: An emitter at a place in the scene, attenuated by distance and direction.
 POSITIONAL = 'positional'
 
-#: The one MIME type the base extension requires.  ``OMI_audio_ogg_vorbis`` and
-#: ``OMI_audio_opus`` add others; what this engine can actually decode is a
-#: separate question, answered in :mod:`omi_audio.clip`.
+#: The one MIME type the base extension requires, and so the encoding every
+#: source falls back to.  The codec extensions in :mod:`omi_audio.formats` add
+#: others; what this build can actually decode is a separate question again,
+#: answered by :func:`omi_audio.formats.decodable`.
 MIME_MPEG = 'audio/mpeg'
 
 
@@ -97,6 +98,12 @@ class AudioSource:
     by itself here: see :meth:`AudioDocument.autoplay` and
     :meth:`~omi_audio.engine.AudioEngine.start_autoplay`, which is what an
     application calls when its scene begins.
+
+    ``encodings`` is the same sound in better codecs, where the document offers
+    it: extension name to a second index into the document's ``audio`` array,
+    from the codec extensions in :mod:`omi_audio.formats`.  ``audio`` remains the
+    MP3 fallback the base extension guarantees, so a consumer that reads none of
+    them still plays the sound.
     """
 
     audio: int | None = None
@@ -105,6 +112,26 @@ class AudioSource:
     loop: bool = False
     autoplay: bool = False
     name: str = ''
+    encodings: dict[str, int] = field(default_factory=dict)
+
+    def audio_indices(self, prefer: Sequence[formats.Encoding] = ()) -> list[int]:
+        """Every ``audio`` index this source offers, most preferred first.
+
+        ``prefer`` is the codec extensions the caller can play, best first --
+        :func:`omi_audio.formats.decodable` for the default chain.  An encoding
+        the caller does not name is left out entirely rather than ranked last:
+        naming one is what says it can be decoded, and offering a sound in a
+        codec nothing here reads is offering silence.
+
+        The fallback comes last and is always offered, and an index named twice
+        appears once, so a document pointing an extension at the entry it falls
+        back to costs one attempt rather than two.
+        """
+        found = [self.encodings[encoding.extension] for encoding in prefer
+                 if encoding.extension in self.encodings]
+        if self.audio is not None:
+            found.append(self.audio)
+        return list(dict.fromkeys(found))
 
 
 @dataclass
@@ -209,11 +236,44 @@ class AudioDocument:
         return [self.sources[index] for index in emitter.sources
                 if 0 <= index < len(self.sources)]
 
-    def audio_for(self, source: AudioSource) -> Audio | None:
-        """The audio data ``source`` names, or None if it names none."""
-        if source.audio is None or not (0 <= source.audio < len(self.audio)):
-            return None
-        return self.audio[source.audio]
+    def audio_indices_for(self, source: AudioSource,
+                          prefer: Sequence[formats.Encoding] = ()) -> list[int]:
+        """``source``'s audio indices that name an entry here, best first.
+
+        :meth:`AudioSource.audio_indices` gives what the source *claims*; this
+        drops whatever points outside the array, so a codec extension with a
+        stale index costs the better encoding rather than the sound.
+        """
+        return [index for index in source.audio_indices(prefer)
+                if 0 <= index < len(self.audio)]
+
+    def audio_options(self, source: AudioSource,
+                      prefer: Sequence[formats.Encoding] = ()) -> list[Audio]:
+        """Every encoding of ``source``'s sound this document holds, best first."""
+        return [self.audio[index] for index in self.audio_indices_for(source, prefer)]
+
+    def audio_for(self, source: AudioSource,
+                  prefer: Sequence[formats.Encoding] = ()) -> Audio | None:
+        """The audio data ``source`` plays, or None if it names none.
+
+        With no ``prefer`` this is the source's own ``audio``: the MP3 fallback,
+        and the whole answer for a document using no codec extension.
+        """
+        options = self.audio_options(source, prefer)
+        return options[0] if options else None
+
+    def extensions_used(self) -> tuple[str, ...]:
+        """Every extension name a document written from this must declare.
+
+        ``KHR_audio_emitter`` plus whichever codec extensions its sources
+        actually offer, in :data:`omi_audio.formats.ENCODINGS` order.
+        :func:`to_gltf` writes the extension *block*; declaring what a file uses
+        is the exporter's job, because only the exporter holds the file.
+        """
+        offered = {name for source in self.sources for name in source.encodings}
+        return (EXTENSION,) + tuple(encoding.extension
+                                    for encoding in formats.ENCODINGS
+                                    if encoding.extension in offered)
 
     def emitters_for(self, indices: list[int]) -> list[AudioEmitter]:
         """The emitters at ``indices``, skipping any that point at nothing."""
@@ -431,9 +491,14 @@ def from_gltf(block: dict[str, Any]) -> AudioDocument:
         if positional is not None and emitter.positional_audio:
             emitter.positional = _read(PositionalProperties, positional)
         emitters.append(emitter)
+    sources = []
+    for entry in _entries(block, 'sources'):
+        source = _read(AudioSource, entry)
+        source.encodings = formats.read(entry)
+        sources.append(source)
     return AudioDocument(
         audio=[_read(Audio, entry) for entry in _entries(block, 'audio')],
-        sources=[_read(AudioSource, entry) for entry in _entries(block, 'sources')],
+        sources=sources,
         emitters=emitters,
     )
 
@@ -465,7 +530,14 @@ def to_gltf(document: AudioDocument) -> dict[str, Any]:
     if document.audio:
         block['audio'] = [_write(entry) for entry in document.audio]
     if document.sources:
-        block['sources'] = [_write(entry) for entry in document.sources]
+        sources = []
+        for source in document.sources:
+            entry = _write(source)
+            encodings = entry.pop('encodings', None)
+            if encodings:
+                entry['extensions'] = formats.write(encodings)
+            sources.append(entry)
+        block['sources'] = sources
     if document.emitters:
         emitters = []
         for emitter in document.emitters:
