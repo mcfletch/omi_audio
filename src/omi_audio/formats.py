@@ -16,12 +16,12 @@ is :meth:`~omi_audio.model.AudioSource.audio_indices`, and actually going and
 getting one is :class:`~omi_audio.library.AudioLibrary`.
 
 :func:`decodable` asks the backend what it reads rather than asserting a list,
-so a build of ``miniaudio`` without Vorbis reports honestly and a future one
-that gains Opus is used without anything here changing.  Today that means
-**Ogg Vorbis plays and Opus does not**: Opus is read, preserved through a
-round trip and offered to an application with its own decoder, but nothing in
-the default chain will turn it into samples, so a document offering Opus with an
-MP3 fallback plays the MP3.
+so a build of ``miniaudio`` without Vorbis reports honestly.
+
+Both encodings play.  Vorbis comes from the ``miniaudio`` backend and Opus from
+the system's ``libopus`` through :mod:`omi_audio._opus`, and the two are
+reported independently because they can be present independently -- a machine
+with ``libopus`` and no ``miniaudio`` decodes Opus and not the MP3 fallback.
 
 References:
     ``OMI_audio_ogg_vorbis``
@@ -37,7 +37,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from omi_audio import _backend
+from omi_audio import _backend, _opus
 
 log = logging.getLogger(__name__)
 
@@ -94,18 +94,25 @@ def by_extension(name: str) -> Encoding | None:
 def decodable() -> tuple[Encoding, ...]:
     """The encodings this installation can actually turn into samples, best first.
 
-    Answered by asking the backend which formats it reads, so it stays true of
-    the ``miniaudio`` that is installed rather than of the one that was current
-    when this was written.  Empty where no backend is installed at all, which is
-    the same answer as "nothing decodes anything" -- correct, since without it
-    the MP3 fallback does not play either.
+    Answered by asking each decoder what it reads, so it stays true of the
+    ``miniaudio`` that is installed rather than of the one that was current when
+    this was written.
+
+    Opus is asked of :mod:`omi_audio._opus` rather than of the backend, since
+    that is what decodes it, and it is reported independently: a machine may
+    have ``libopus`` and no ``miniaudio``, in which case Opus is the only
+    encoding here that plays and the MP3 fallback is the one that does not.
     """
+    found: list[Encoding] = []
     module = _backend.backend()
-    if module is None:
-        return ()
-    known = {member.name for member in module.FileFormat}
-    return tuple(encoding for encoding in ENCODINGS
-                 if encoding.backend_format in known)
+    known = {member.name for member in module.FileFormat} if module else set()
+    for encoding in ENCODINGS:
+        if encoding is OPUS:
+            if _opus.available():
+                found.append(encoding)
+        elif encoding.backend_format in known:
+            found.append(encoding)
+    return tuple(found)
 
 
 def read(source: Any) -> dict[str, int]:

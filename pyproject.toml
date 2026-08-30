@@ -44,13 +44,27 @@ dependencies = [
 # rather than a general preference: miniaudio publishes no manylinux aarch64
 # wheel, so a Raspberry Pi, an ARM server or a linux/arm64 container would have
 # to build the sdist and would want a compiler for it. The package and every
-# decoder it bundles are MIT/public-domain, which is why it is the only audio
-# dependency this project takes.
+# decoder it bundles are MIT/public-domain, which is the test every audio
+# dependency here has to pass: the convenient wrappers -- libsndfile, PyAV,
+# pydub via ffmpeg -- are LGPL or worse and cannot be a dependency of a BSD
+# library, whatever they would save.
 playback = ["miniaudio>=1.59"]
-test = ["pytest", "pytest-cov", "miniaudio>=1.59"]
+# Ogg Opus, which the miniaudio backend does not read. The container is
+# demultiplexed in omi_audio._opus from published RFCs; this supplies libopus
+# itself, bundled inside the wheel for Linux, macOS and Windows at roughly
+# 330 KB apiece. Optional because Opus is one codec among several and its
+# absence is the ordinary "this build does not read that" outcome. A system
+# libopus is used where there is one and this is absent, which covers most
+# Linux desktops -- but libopus is not a component Windows or macOS ships, so
+# depending on the system alone would decode on one platform and quietly fail
+# on the others. Everything in the chain is BSD-3-Clause: libopus from Xiph,
+# the opuslib bindings, and the wheel that bundles them.
+opus = ["opuslib-next-bundled>=0.1.1"]
+test = ["pytest", "pytest-cov", "miniaudio>=1.59", "opuslib-next-bundled>=0.1.1"]
 docs = ["sphinx>=7.0", "furo"]
 dev = [
     "omi_audio[test]",
+    "omi_audio[opus]",
     "omi_audio[docs]",
     "tox>=4.0",
     "mypy",

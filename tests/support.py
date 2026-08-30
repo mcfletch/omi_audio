@@ -7,6 +7,7 @@ easier.  ``conftest.py`` holds the fixtures, and only the fixtures.
 """
 
 import math
+import struct
 import wave
 
 import numpy as np
@@ -17,7 +18,7 @@ try:
 except ImportError:                     # PyPy, where the module is present but
     tracemalloc = None                  # the extension behind it is not.
 
-from omi_audio import clip as clipmodule
+from omi_audio import _backend, _opus
 from omi_audio import synth
 from omi_audio.clip import Clip
 
@@ -28,7 +29,7 @@ RATE = 8000
 #: Skipped rather than failed where the optional backend is not installed --
 #: everything except decoding and real playback is exercised without it.
 needs_miniaudio = pytest.mark.skipif(
-    not clipmodule.decoder_available(),
+    not _backend.available(),
     reason='miniaudio is not installed; the backend seam cannot be exercised')
 
 #: The allocation-discipline tests need `tracemalloc`, and PyPy has no such
@@ -113,3 +114,54 @@ def device_bytes(engine, frames=512, blocks=8):
         raw = memoryview(block).cast('B') if memoryview(block).itemsize != 1 else block
         collected.append(np.frombuffer(bytes(raw), dtype=np.float32))
     return np.concatenate(collected)
+
+
+#: Opus decodes through the system ``libopus`` rather than through the backend,
+#: so it is present or absent independently of ``miniaudio``.
+needs_libopus = pytest.mark.skipif(
+    not _opus.available(),
+    reason='libopus is not installed; Opus cannot be decoded here')
+
+
+def ogg_stream(packets, serial=1, page_size=255):
+    """Real Ogg pages carrying ``packets``, built from RFC 3533 §6.
+
+    Built here rather than by an encoder so the demultiplexer is tested against
+    the specification instead of against whatever produced a fixture. The
+    checksum is left zero: nothing in this reader verifies it, and a test that
+    computed one would be asserting the builder rather than the reader.
+
+    ``page_size`` is how many lacing values go on a page, which is what forces a
+    packet to continue across a page boundary.
+    """
+    lacing = bytearray()
+    body = bytearray()
+    for packet in packets:
+        remaining = len(packet)
+        while remaining >= 255:
+            lacing.append(255)
+            remaining -= 255
+        lacing.append(remaining)
+        body += packet
+
+    out = bytearray()
+    consumed = 0
+    pages = [lacing[at:at + page_size] for at in range(0, len(lacing), page_size)] or [b'']
+    for number, table in enumerate(pages):
+        size = sum(table)
+        header = bytearray(b'OggS')
+        header += bytes([0])                        # stream structure version
+        header += bytes([0])                        # header type
+        header += (0).to_bytes(8, 'little')         # granule position
+        header += serial.to_bytes(4, 'little')
+        header += number.to_bytes(4, 'little')
+        header += (0).to_bytes(4, 'little')         # checksum, see above
+        header += bytes([len(table)])
+        out += header + bytes(table) + body[consumed:consumed + size]
+        consumed += size
+    return bytes(out)
+
+
+def opus_head(channels=1, pre_skip=312, rate=48000):
+    """An ``OpusHead`` identification packet (RFC 7845 §5.1)."""
+    return struct.pack('<8sBBHIhB', b'OpusHead', 1, channels, pre_skip, rate, 0, 0)

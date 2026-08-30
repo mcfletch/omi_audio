@@ -44,12 +44,28 @@ class TestTheImportHappensOnce:
 
 
 class TestOneAnswerForBothHalves:
-    def test_decoding_and_playback_report_the_same_availability(self):
-        assert clipmodule.decoder_available() == devicemodule.miniaudio_available()
+    """One answer to "is miniaudio here", asked in two places.
+
+    `decoder_available` is deliberately *not* one of them.  It answers "can
+    anything here decode", and Opus decodes through libopus with no miniaudio
+    involved, so the two questions have genuinely different answers on a machine
+    that has one library and not the other.
+    """
+
+    def test_both_halves_of_the_backend_report_the_same_availability(self):
+        assert _backend.available() == devicemodule.miniaudio_available()
 
     def test_making_the_backend_absent_moves_both_at_once(self, no_backend):
-        assert clipmodule.decoder_available() is False
+        assert _backend.available() is False
         assert devicemodule.miniaudio_available() is False
+
+    def test_decoding_is_still_possible_without_the_backend_where_opus_is(
+            self, no_backend, monkeypatch):
+        """The reason the two questions had to be separated."""
+        monkeypatch.setattr(clipmodule._opus, 'available', lambda: True)
+        assert clipmodule.decoder_available() is True
+        monkeypatch.setattr(clipmodule._opus, 'available', lambda: False)
+        assert clipmodule.decoder_available() is False
 
 
 def test_the_default_sample_rate_is_the_one_both_modules_use():
