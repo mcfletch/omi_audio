@@ -10,8 +10,15 @@ about its own forward axis. The mixing is a fixed voice pool summed in NumPy.
   audio library is required to mix.
 - **`miniaudio` is optional** — it decodes files and reaches the sound card.
   Without it the library still mixes and simply stays silent.
+- **Ogg Opus decodes too**, through the optional `opus` extra. `miniaudio` does
+  not read it, so the container is demultiplexed here from the published RFCs
+  and the codec is `libopus`.
 - **Nothing here is copyleft**, and neither is anything it depends on:
-  `miniaudio` and every decoder it bundles are MIT or public domain.
+  `miniaudio` and every decoder it bundles are MIT or public domain, and the
+  Opus chain — `libopus`, the `opuslib` bindings, the wheel that carries them —
+  is BSD-3-Clause throughout. The convenient wrappers are not: `libsndfile`,
+  PyAV and `pydub` via ffmpeg are LGPL or worse and cannot be a dependency
+  here, whatever they would save.
 - **Silence is a backend.** A missing package, a device that will not open, or a
   machine with no audio hardware all end in one warning and a `NullDevice`.
   `open_device()` cannot raise.
@@ -32,7 +39,14 @@ about its own forward axis. The mixing is a fixed voice pool summed in NumPy.
 ```bash
 pip install omi_audio                # mixing only (NumPy)
 pip install "omi_audio[playback]"    # + miniaudio, for files and a sound card
+pip install "omi_audio[opus]"        # + Ogg Opus decoding
 ```
+
+The `opus` extra carries a `libopus` inside its wheel for Linux, macOS and
+Windows, about 330 KB. A `libopus` already on the system is used where the extra
+is absent, which covers most Linux desktops — but it is not a component Windows
+or macOS ships, so relying on the system alone would decode on one platform and
+quietly fail on the others.
 
 ## Quick start
 

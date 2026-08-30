@@ -9,6 +9,34 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
 
 ### Added
 
+- **Ogg Opus decoding**, through the new optional `opus` extra. `KHR_audio_emitter`
+  names Opus as the better of its two codec extensions and a document offering
+  both prefers it, so a build that could not read it fell back to the MP3 every
+  time. `formats.decodable()` now reports it.
+
+  The container is demultiplexed in `omi_audio._opus` from RFC 3533 and RFC 7845
+  — the pages, the segment table that laces packets across them, the `OpusHead`
+  header and the pre-roll every decoder must discard — because no package does
+  that part. The codec itself is `libopus`, supplied by `opuslib-next-bundled`,
+  whose wheels carry one for Linux, macOS and Windows at about 330 KB each. A
+  system `libopus` is used where there is one and the extra is absent; that
+  covers most Linux desktops, but it is not a component Windows or macOS ships,
+  so the system alone would decode on one platform and quietly fail on the two
+  others. The whole chain is BSD-3-Clause.
+
+  Opus is recognised from the bytes rather than from a name or a declared MIME
+  type, so a mislabelled payload still decodes and Ogg **Vorbis** — which is
+  also Ogg, and which the backend reads perfectly well — is left alone.
+
+### Changed
+
+- `clip.decoder_available()` now answers "can anything here decode", which is
+  what it always said it did. It was equal to "is `miniaudio` installed" only
+  because `miniaudio` was the sole decoder; Opus goes through `libopus` with no
+  backend involved, so the two questions have different answers on a machine
+  with one library and not the other. Code wanting the backend specifically
+  should ask `device.miniaudio_available()`.
+
 - `synth.rumble` — the low end of the range: noise with the top rolled away
   over a tone that falls as it goes, optionally saturated. `synth.impact` is
   white noise and is therefore bright however long it decays, so a detonation

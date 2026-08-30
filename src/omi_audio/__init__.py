@@ -40,7 +40,8 @@ would each need a different renderer, and neither is here.  See
 :func:`~omi_audio.spatial.equal_power_pan`.
 
 NumPy is the only hard dependency.  ``pip install omi_audio[playback]`` adds
-``miniaudio`` for decoding files and reaching a sound card.
+``miniaudio`` for decoding files and reaching a sound card, and ``opuslib-next-
+bundled`` for the one codec ``miniaudio`` does not read.
 
 .. warning::
 

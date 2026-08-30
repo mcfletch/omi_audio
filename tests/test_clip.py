@@ -493,7 +493,14 @@ class TestDecode:
         with pytest.raises(DecodeError):
             clipmodule.decode_file(str(tmp_path / 'anything.wav'))
 
-    def test_the_module_says_decoding_is_impossible_without_the_backend(self, no_backend):
+    def test_the_module_says_decoding_is_impossible_with_nothing_installed(
+            self, no_backend, monkeypatch):
+        """`decoder_available` is "can anything decode", not "is miniaudio here".
+
+        Opus goes through libopus rather than the backend, so both have to be
+        absent before the answer is no.
+        """
+        monkeypatch.setattr(clipmodule._opus, 'available', lambda: False)
         assert clipmodule.decoder_available() is False
 
 

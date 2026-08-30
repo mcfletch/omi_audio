@@ -59,15 +59,30 @@ class TestWhatThisBuildCanDecode:
     def test_a_backend_that_reads_vorbis_makes_vorbis_playable(self, monkeypatch):
         monkeypatch.setattr(formats._backend, 'backend',
                             lambda: _Backend('UNKNOWN', 'WAV', 'MP3', 'VORBIS'))
+        monkeypatch.setattr(formats._opus, 'available', lambda: False)
         assert formats.decodable() == (formats.VORBIS,)
 
-    def test_a_backend_that_gains_opus_makes_opus_playable(self, monkeypatch):
+    def test_opus_is_reported_from_its_own_decoder_not_from_the_backend(
+            self, monkeypatch):
+        """Opus does not come from miniaudio, so a backend listing it changes
+        nothing and libopus alone is enough."""
         monkeypatch.setattr(formats._backend, 'backend',
                             lambda: _Backend('MP3', 'VORBIS', 'OPUS'))
+        monkeypatch.setattr(formats._opus, 'available', lambda: False)
+        assert formats.decodable() == (formats.VORBIS,)
+        monkeypatch.setattr(formats._opus, 'available', lambda: True)
         assert formats.decodable() == (formats.OPUS, formats.VORBIS)
 
-    def test_no_backend_decodes_nothing(self, monkeypatch):
+    def test_opus_plays_with_no_backend_at_all(self, monkeypatch):
+        """A machine with libopus and no miniaudio decodes Opus and not the
+        MP3 fallback, which is the case that made these two independent."""
         monkeypatch.setattr(formats._backend, 'backend', lambda: None)
+        monkeypatch.setattr(formats._opus, 'available', lambda: True)
+        assert formats.decodable() == (formats.OPUS,)
+
+    def test_nothing_installed_decodes_nothing(self, monkeypatch):
+        monkeypatch.setattr(formats._backend, 'backend', lambda: None)
+        monkeypatch.setattr(formats._opus, 'available', lambda: False)
         assert formats.decodable() == ()
 
     def test_the_installed_backend_reads_ogg_vorbis(self):

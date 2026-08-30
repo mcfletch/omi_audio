@@ -15,6 +15,12 @@ extra.  Where it is absent, :func:`decode_file` raises :class:`DecodeError` and
 :class:`ClipCache` turns that into a warning and a silence -- a machine with no
 audio backend is a normal machine.
 
+Ogg Opus is the exception and goes to :mod:`omi_audio._opus` instead, which
+demultiplexes the container itself and decodes through ``libopus``.  It is
+recognised from the bytes rather than from a file name, and the two decoders are
+independent: a machine may have either, both or neither, and Opus playing while
+the MP3 fallback does not is a real configuration rather than a broken one.
+
 Encoded audio arrives two ways, and both are here: :func:`decode_file` for a
 path, and :func:`decode_bytes` for audio an application already holds -- a glTF
 ``bufferView`` out of a ``.glb``, the payload of a ``data:`` URI, or a download
@@ -41,7 +47,7 @@ from collections.abc import Callable
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from omi_audio import _backend
+from omi_audio import _backend, _opus
 from omi_audio._backend import DEFAULT_SAMPLE_RATE
 
 log = logging.getLogger(__name__)
@@ -52,13 +58,37 @@ __all__ = [
 ]
 
 
+#: Enough of a file to tell Ogg Opus from everything else: the page header,
+#: its segment table and the start of the first packet.
+_OPUS_SNIFF_BYTES = 4096
+
+
 class DecodeError(Exception):
     """A file could not be turned into samples: absent, unreadable, or unknown."""
 
 
 def decoder_available() -> bool:
     """Whether encoded audio can be decoded at all in this installation."""
-    return _backend.available()
+    return _backend.available() or _opus.available()
+
+
+def _opus_clip(data: bytes, sample_rate: int, name: str) -> Clip:
+    """One Ogg Opus payload as a mono :class:`Clip` at ``sample_rate``.
+
+    The backend does the mixing and resampling for every other format as part
+    of decoding; ``libopus`` returns what the stream holds, so the two steps
+    happen here instead.  Averaging the channels rather than taking one of them
+    is what keeps a sound that was mixed across a stereo pair from losing
+    whichever half it sat in.
+    """
+    try:
+        samples, channels, rate = _opus.decode(data, name)
+    except _opus.OpusError as error:
+        raise DecodeError(str(error)) from error
+    if channels > 1:
+        samples = samples.reshape((-1, channels)).mean(axis=1)
+    clip = Clip(np.asarray(samples, dtype=np.float32), rate, name=name)
+    return clip if rate == sample_rate else clip.resampled(sample_rate)
 
 
 class Clip:
@@ -162,6 +192,21 @@ def decode_file(path: str, sample_rate: int = DEFAULT_SAMPLE_RATE) -> Clip:
         DecodeError: where the backend is absent, the file is missing, or its
             contents are not audio this build can read.
     """
+    try:
+        with open(path, 'rb') as handle:
+            head = handle.read(_OPUS_SNIFF_BYTES)
+    except OSError as error:
+        raise DecodeError('cannot decode %r: %s' % (path, error)) from error
+    if _opus.looks_like_opus(head):
+        # Read whole rather than streamed: the backend streams every other
+        # format from the path, but libopus is handed packets and the container
+        # has to be walked to find them.
+        try:
+            with open(path, 'rb') as handle:
+                data = handle.read()
+        except OSError as error:
+            raise DecodeError('cannot decode %r: %s' % (path, error)) from error
+        return _opus_clip(data, sample_rate, path)
     module = _require_backend(repr(path))
     try:
         decoded = module.decode_file(
@@ -189,6 +234,8 @@ def decode_bytes(data: bytes, sample_rate: int = DEFAULT_SAMPLE_RATE,
         DecodeError: where the backend is absent, or the bytes are not audio
             this build can read.
     """
+    if _opus.looks_like_opus(data):
+        return _opus_clip(data, sample_rate, name)
     module = _require_backend(name)
     try:
         decoded = module.decode(
