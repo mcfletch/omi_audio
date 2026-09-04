@@ -7,8 +7,9 @@ samples need the library.
 
 No Opus file is checked in. The content this was written for is licensed such
 that it cannot live in this repository, and a synthesised stream cannot carry
-real codec payload, so a decode over real audio runs only where a sample tree is
-pointed at by ``OMI_AUDIO_OPUS_SAMPLES``.
+real codec payload, so a decode over real audio runs only where a sample tree
+is there to decode. ``tests/fetch_opus_samples.py`` puts one in the cache these
+look in by default; ``OMI_AUDIO_OPUS_SAMPLES`` names a different tree instead.
 """
 
 import os
@@ -21,8 +22,16 @@ from omi_audio.clip import DecodeError, decode_bytes, decode_file
 
 from support import needs_libopus, ogg_stream, opus_head, wav_bytes
 
+#: Where a fetched sample tree is kept when the variable does not name one.
+#: Outside any repository on purpose: the reference recordings are licensed for
+#: listening rather than for redistribution under this project's terms, so they
+#: are cached per user and never committed. See ``fetch_opus_samples.py``.
+SAMPLE_CACHE = os.path.join(
+    os.environ.get('LOCALAPPDATA') or os.path.expanduser('~/.cache'),
+    'omi_audio', 'opus-samples')
+
 #: A tree of `.opus` files to decode for real, if this machine has one.
-SAMPLE_ROOT = os.environ.get('OMI_AUDIO_OPUS_SAMPLES', '')
+SAMPLE_ROOT = os.environ.get('OMI_AUDIO_OPUS_SAMPLES', '') or SAMPLE_CACHE
 
 
 class TestTheOggContainer:
