@@ -1,6 +1,8 @@
 name: tests
 
 on:
+  push:
+    branches: [develop]
   pull_request:
   workflow_dispatch:
   # `release.yml` runs this on every push to main and then decides whether the
