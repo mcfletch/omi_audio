@@ -17,6 +17,13 @@ That runs the whole suite in under a second. `miniaudio` comes in with the
 `dev` extra; without it the package still works and simply stays silent, which
 is a path the suite exercises on purpose.
 
+The Opus decode tests need a `libopus`. The `dev` extra brings one in the
+`opuslib-next-bundled` wheel, so they run after the install above; a system
+`libopus` — `libopus0` on Debian and Ubuntu, `opus` on Homebrew — serves them
+too, and is the library the tests reach for when the wheel is absent. Without
+either, those tests skip themselves and the run comes in about two points below
+the coverage floor.
+
 ## Before you open a pull request
 
 ```bash
@@ -28,10 +35,16 @@ pytest --cov --cov-branch    # tests, with the coverage floor
 or, all of it the way CI does:
 
 ```bash
-tox -e lint,typecheck,py312-playback,py312-nobackend
+tox -e lint,typecheck,py312-playback,py312-nobackend,py312-playback-bundled
 ```
 
 All three are gates. A merge needs them green.
+
+The `bundled` env installs `opuslib-next-bundled`, so it decodes Opus through the
+`libopus` in that wheel while the other two use the system one.
+`omi_audio._opus` prefers the wheel and falls back to the system, and those are
+the only two ways it finds the codec, so one env of each keeps both honest —
+including the wheel, which is all Windows and macOS have.
 
 ## What the code is held to
 

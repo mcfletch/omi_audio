@@ -26,6 +26,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # `libopus` is not a runner component. Without one, `omi_audio._opus`
+      # reports Opus undecodable, every test that turns packets into samples
+      # skips itself, and the run lands the wrong side of the coverage floor in
+      # tox.ini -- so the decoder that reads the codec `KHR_audio_emitter`
+      # prefers would be shipped unexercised. The runtime package is the whole
+      # requirement: the binding is ctypes over the soname, not a compile, so
+      # there is no header and no `-dev` to install.
+      - name: Install libopus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopus0
+
+      # Asserted rather than assumed, because the failure is otherwise silent: a
+      # renamed package, or a library ctypes cannot find, costs a handful of
+      # skipped tests and two points of coverage and says nothing about why.
+      - name: Check the system libopus loads
+        run: |
+          python -c 'import ctypes, ctypes.util; name = ctypes.util.find_library("opus"); assert name, "libopus0 is installed but ctypes found no libopus"; ctypes.CDLL(name); print("libopus:", name)'
+
       - name: Install tox
         run: python -m pip install --upgrade pip tox tox-gh
 
@@ -34,8 +53,11 @@ jobs:
       # runner has no sound card, which is exactly the silent path the library
       # is required to survive. The 3.12 row additionally runs `lint` and
       # `typecheck`, so ruff and mypy gate a merge rather than being declared in
-      # an extra and run nowhere. Coverage is measured in every test env with a
-      # floor of 95% (see tox.ini).
+      # an extra and run nowhere, and the `bundled` env, which decodes Opus
+      # through the `libopus` inside the `opuslib-next-bundled` wheel -- the only
+      # one Windows and macOS users get -- rather than through the system one
+      # installed above. Coverage is measured in every test env with a floor of
+      # 95% (see tox.ini).
       - name: Run tox
         run: tox
 
@@ -55,6 +77,11 @@ jobs:
         with:
           python-version: "3.15"
           allow-prereleases: true
+      # The same codec the matrix needs, for the same reasons.
+      - name: Install libopus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopus0
       - name: Install tox
         run: python -m pip install --upgrade pip tox tox-gh
       - name: Run tox
