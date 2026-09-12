@@ -73,7 +73,7 @@ from omi_audio import clip, device, engine, library, mixer, model, spatial, synt
 
 #: An alpha release, and the trove classifier and the version string agree
 #: about it.  See ``CHANGELOG.md``.
-__version__ = '0.2.0a1'
+__version__ = '0.3.0a1'
 
 __all__ = [
     'EXTENSION', 'Audio', 'AudioDevice', 'AudioDocument', 'AudioEmitter',
