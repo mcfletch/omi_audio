@@ -146,6 +146,45 @@ class TestPlaybackRate:
         mixer = Mixer(sample_rate=8000)
         assert mixer.play(constant(1.0), rate=0.0) is None
 
+    def test_a_playing_sound_changes_rate_from_the_next_block(self):
+        mixer = Mixer(sample_rate=8000)
+        voice = mixer.play(constant(1.0, frames=8))
+        mixer.mix(2)
+        voice.set_rate(2.0)
+        mixer.mix(2)                            # 2 + 4 of 8 frames consumed
+        assert voice.playing
+        mixer.mix(1)
+        assert not voice.playing
+
+    def test_a_changed_rate_keeps_the_clip_rate_correction(self):
+        """Rate is relative to the clip's own speed, not the mixer's."""
+        mixer = Mixer(sample_rate=16000)
+        voice = mixer.play(constant(1.0, frames=8, sample_rate=8000))
+        voice.set_rate(2.0)                     # now one clip frame per frame
+        mixer.mix(7)
+        assert voice.playing
+        mixer.mix(2)
+        assert not voice.playing
+
+    @pytest.mark.parametrize('rate', [0.0, -1.0, float('nan'), float('inf')])
+    def test_a_rate_that_cannot_play_leaves_the_sound_as_it_was(self, rate):
+        mixer = Mixer(sample_rate=8000)
+        voice = mixer.play(constant(1.0, frames=8))
+        voice.set_rate(rate)
+        mixer.mix(7)
+        assert voice.playing
+        mixer.mix(2)
+        assert not voice.playing
+
+    def test_changing_the_rate_of_a_finished_sound_does_nothing(self):
+        mixer = Mixer(sample_rate=8000)
+        old = mixer.play(constant(1.0, frames=4))
+        mixer.mix(8)
+        new = mixer.play(constant(1.0, frames=8))
+        old.set_rate(4.0)                       # the slot now holds `new`
+        mixer.mix(7)
+        assert new.playing
+
 
 class TestGainRamping:
     """A gain that jumps between blocks is a click; the mixer ramps instead."""

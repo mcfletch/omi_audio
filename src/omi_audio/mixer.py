@@ -124,14 +124,15 @@ class Voice:
     """
 
     __slots__ = (
-        'clip', 'position', 'rate', 'loop', 'priority', 'active', 'generation',
-        'gain_left', 'gain_right', 'target_left', 'target_right',
+        'clip', 'position', 'rate', 'native', 'loop', 'priority', 'active',
+        'generation', 'gain_left', 'gain_right', 'target_left', 'target_right',
     )
 
     def __init__(self) -> None:
         self.clip: Clip | None = None
         self.position = 0.0         # cursor, in clip samples; fractional
         self.rate = 1.0             # clip samples consumed per output frame
+        self.native = 1.0           # ...of those, at a playback rate of 1
         self.loop = False
         self.priority = 0.0
         self.active = False
@@ -216,6 +217,16 @@ class VoiceHandle:
         """Aim the sound with a gain and a ``-1``-left-to-``+1``-right pan."""
         left, right = _pan_gains(pan)
         self.set_gain(gain * left, gain * right)
+
+    def set_rate(self, rate: float) -> None:
+        """Play the sound at ``rate`` times its own speed from the next block.
+
+        ``rate`` means what it means to :meth:`Mixer.play`: speed and pitch
+        together, relative to the clip's own sample rate.  A rate that is not a
+        positive finite number is ignored, as :meth:`Mixer.play` refuses one.
+        """
+        if self._live and math.isfinite(rate) and rate > 0.0:
+            self._voice.rate = self._voice.native * float(rate)
 
     def stop(self) -> None:
         """Silence this sound and return its slot to the pool."""
@@ -369,14 +380,15 @@ class Mixer:
         left, right = _finite(left), _finite(right)
         # A clip recorded at another rate plays back proportionally faster or
         # slower, which is exactly what resampling it would have done.
-        step = float(rate) * clip.sample_rate / self.sample_rate
+        native = clip.sample_rate / self.sample_rate
         with self._claim:
             voice = self._claim_voice(priority, max(left, right))
             if voice is None:
                 return None
             voice.clip = clip
             voice.position = 0.0
-            voice.rate = step
+            voice.native = native
+            voice.rate = native * float(rate)
             voice.loop = bool(loop)
             voice.priority = _finite(priority)
             voice.gain_left = voice.target_left = left
