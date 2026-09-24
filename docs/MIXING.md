@@ -135,6 +135,41 @@ listener submerges:
 engine.muffle = min(1.0, depth_below_surface / 0.5)
 ```
 
+## Reverb
+
+`mixer.reverb` (also `engine.reverb`) is the sound of the place the listener is
+in, applied to the whole mix after the voices are summed and before the master
+gain. A tunnel gives back the engine and the tyres as well as anything else
+playing in it, so one setting covers every sound.
+
+| Property | Units | Default | Meaning |
+|---|---|---|---|
+| `level` | 0 to 1 | 0 | How loud the reverb is against the dry mix |
+| `decay` | seconds | 1.2 | Time for a sound to fall by 60 dB |
+| `damping` | 0 to 1 | 0.4 | How much of the top each return loses |
+
+It is four feedback comb filters per ear (Schroeder's arrangement), with delays
+of 29.7 to 43.7 ms that share no common factor, and the right ear half a
+millisecond later than the left so the tail spreads across the stereo field.
+Each comb's feedback is `10 ** (-3 * delay / decay)`, which falls by 60 dB over
+`decay` seconds.
+
+A comb reads a sample written one delay earlier, so a stretch of the block no
+longer than the shortest delay reads only samples written before it began. The
+block is processed in stretches of that length, each one vectorised, with the
+delay lines allocated once at construction. Damping is a weighted two-tap
+average of what each comb reads back; because every pass reads what the pass
+before wrote, the top drains out of the tail as it goes.
+
+`level` is ramped across a block, as a gain is, so a listener driving into a
+tunnel hears the reverb arrive. Once the level has been nought for a block the
+delay lines are cleared and the reverb costs nothing until it is raised again:
+
+```python
+engine.reverb.decay = 1.8
+engine.reverb.level = 0.45 * share_of_the_listener_inside_the_tunnel
+```
+
 ## The device hand-off
 
 A device is handed the generator `Mixer.blocks()` returns and pulls from it on

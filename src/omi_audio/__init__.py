@@ -23,9 +23,12 @@ The pieces, in the order sound travels through them:
                            library -- decides what a ``uri`` is allowed to mean.
 :mod:`~.spatial`           The listener's pose and every gain curve: distance,
                            cone, VRML97 ellipsoid, and equal-power panning.
-:mod:`~.synth`             Tones, chirps, noise and impacts, so a demo or a test
-                           has something audible without shipping an asset.
+:mod:`~.synth`             Tones, chirps, noise, impacts and looping ambience
+                           (surf, birdsong), so a demo or a test has something
+                           audible without shipping an asset.
 :mod:`~.mixer`             A fixed pool of voices summed into stereo blocks.
+:mod:`~.reverb`            The sound of the place the listener is in, over the
+                           whole mix.
 :mod:`~.device`            Where those blocks go -- ``miniaudio``, or silence.
 :mod:`~.engine`            The one object an application holds, tying the rest
                            together and keeping decoding off the audio thread.
@@ -61,6 +64,7 @@ from omi_audio.device import (
 from omi_audio.engine import AudioEngine
 from omi_audio.library import AudioLibrary
 from omi_audio.mixer import Mixer, Voice, VoiceHandle
+from omi_audio.reverb import Reverb
 from omi_audio.model import (
     EXTENSION, Audio, AudioDocument, AudioEmitter, AudioSource,
     PositionalProperties, emitter_indices, emitter_reference, from_gltf, to_gltf,
@@ -69,7 +73,9 @@ from omi_audio.spatial import (
     DistanceModel, Listener, ShapeType, cone_gain, distance_gain, ellipsoid_gain,
     ellipsoid_gain_at, ellipsoid_reach, equal_power_pan,
 )
-from omi_audio import clip, device, engine, library, mixer, model, spatial, synth
+from omi_audio import (
+    clip, device, engine, library, mixer, model, reverb, spatial, synth,
+)
 
 #: An alpha release, and the trove classifier and the version string agree
 #: about it.  See ``CHANGELOG.md``.
@@ -80,10 +86,10 @@ __all__ = [
     'AudioEngine', 'AudioLibrary', 'AudioSource', 'Clip', 'ClipCache',
     'DecodeError', 'DeviceError', 'DistanceModel', 'Listener',
     'MiniaudioDevice', 'Mixer', 'NullDevice', 'PositionalProperties',
-    'ShapeType', 'Voice', 'VoiceHandle', '__version__', 'clip', 'cone_gain',
+    'Reverb', 'ShapeType', 'Voice', 'VoiceHandle', '__version__', 'clip', 'cone_gain',
     'decode_bytes', 'decode_file', 'decoder_available', 'describe', 'device',
     'distance_gain', 'ellipsoid_gain', 'ellipsoid_gain_at', 'ellipsoid_reach',
     'emitter_indices', 'emitter_reference', 'engine', 'equal_power_pan',
     'from_gltf', 'library', 'miniaudio_available', 'mixer', 'model',
-    'open_device', 'spatial', 'synth', 'to_gltf',
+    'open_device', 'reverb', 'spatial', 'synth', 'to_gltf',
 ]

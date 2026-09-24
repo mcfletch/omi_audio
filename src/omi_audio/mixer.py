@@ -54,6 +54,7 @@ from numpy.typing import NDArray
 
 from omi_audio._backend import DEFAULT_SAMPLE_RATE
 from omi_audio.clip import Clip
+from omi_audio.reverb import Reverb
 from omi_audio.spatial import equal_power_pan
 
 log = logging.getLogger(__name__)
@@ -299,6 +300,9 @@ class Mixer:
         self._muffle_prefix = np.zeros(
             (self._muffle_taps + size, 2), dtype=np.float64)
         self._muffle_window = np.zeros((size, 2), dtype=np.float64)
+        #: The sound of the place the listener is in, over the whole mix. Its
+        #: ``level`` starts at nought, which costs nothing per block.
+        self.reverb = Reverb(self.sample_rate, self._max_block)
 
     # ------------------------------------------------------------------
     # Control thread
@@ -446,6 +450,8 @@ class Mixer:
         for voice in self.voices:
             if voice.active:
                 self._mix_voice(voice, frames, out)
+        if self.reverb.active:
+            self.reverb.process(out, frames)
         if self._master_gain != 1.0:
             np.multiply(out, self._master_gain, out=out)
         if self._muffle > 0.0:

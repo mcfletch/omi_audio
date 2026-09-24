@@ -42,6 +42,7 @@ from omi_audio.clip import Clip, ClipCache
 from omi_audio.device import AudioDevice, open_device
 from omi_audio.library import AudioLibrary, Fetch
 from omi_audio.mixer import DEFAULT_VOICES, Mixer, VoiceHandle
+from omi_audio.reverb import Reverb
 from omi_audio.spatial import Listener, Vector, ViewPlatform, equal_power_pan
 
 log = logging.getLogger(__name__)
@@ -142,6 +143,15 @@ class AudioEngine:
     @muffle.setter
     def muffle(self, value: float) -> None:
         self.mixer.muffle = value
+
+    @property
+    def reverb(self) -> Reverb:
+        """The reverb over the whole mix: set its ``level``, ``decay`` and ``damping``.
+
+        One per engine, because it is the sound of the place the listener is
+        in; see :mod:`omi_audio.reverb`.
+        """
+        return self.mixer.reverb
 
     def listen(self, platform: ViewPlatform) -> Listener:
         """Move the listener to a view platform's pose, and return it.

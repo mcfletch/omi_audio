@@ -108,8 +108,9 @@ In the order sound travels through them:
 | `library` | What a document's audio references have resolved to — the seam where **your** resolver, not this library, decides what a `uri` means |
 | `spatial` | Every gain curve — three glTF distance models, the Web Audio cone, VRML97's two ellipsoids, equal-power panning — and the listener's pose |
 | `clip` | Encoded audio → mono float32 at one rate, from a file or from bytes (`.glb` buffer views, `data:` URIs, downloads), decoded once |
-| `synth` | Tones, chirps, noise, impacts and rumbles made out of arithmetic, so demos and tests need no assets and no licences |
+| `synth` | Tones, chirps, noise, impacts, rumbles and looping ambience (surf, birdsong) made out of arithmetic, so demos and tests need no assets and no licences |
 | `mixer` | A fixed voice pool summed into stereo blocks: allocation-free, lock-free on the audio thread, priority stealing, gain ramping, an underwater low-pass |
+| `reverb` | The sound of the place the listener is in: a comb-filter reverb over the whole mix |
 | `device` | Where blocks go — `miniaudio`, or silence |
 | `engine` | The one object an application holds |
 
@@ -125,8 +126,10 @@ Stated up front, because finding out later is worse:
 - **Stereo only, and the pan carries azimuth alone.** A sound directly overhead
   and one dead ahead are indistinguishable. Height needs an HRTF and surround
   needs more than two channels; neither is here.
-- **No reverb, occlusion or doppler.** `muffle` is the only effect, and it is a
-  master-bus low-pass.
+- **No occlusion or doppler, and one reverb for the whole mix.** The effects
+  are master-bus ones: `muffle`, a low-pass, and `reverb`, the place the
+  listener is in. A sound cannot be reverberated on its own, and two places
+  cannot be heard at once.
 - **No streaming.** Clips are decoded whole into memory.
 - **No scheduling.** Nothing here has a clock; `autoplay` starts when your
   application says the scene has begun.

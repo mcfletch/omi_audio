@@ -9,6 +9,16 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
 
 ### Added
 
+- **A reverb over the whole mix**, `Mixer.reverb` and `AudioEngine.reverb`: the
+  sound of the place the listener is in, with a `level`, a `decay` in seconds
+  and a `damping`. It is a bank of feedback comb filters processed in stretches
+  no longer than its shortest delay, so it runs vectorised and allocates
+  nothing on the audio thread, and at a level of nought it costs nothing. See
+  `docs/MIXING.md`.
+- **`synth.surf` and `synth.birdsong`**, looping ambience made without a
+  recording: waves breaking and running back over a dark noise bed, and several
+  birds singing at different distances. Both loop without a seam.
+
 - **Ogg Opus decoding**, through the new optional `opus` extra. `KHR_audio_emitter`
   names Opus as the better of its two codec extensions and a document offering
   both prefers it, so a build that could not read it fell back to the MP3 every

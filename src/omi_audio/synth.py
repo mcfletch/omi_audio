@@ -321,6 +321,128 @@ def echoed(clip: Clip, delay: float = 0.09, level: float = 0.4,
                 name='%s echoed' % (clip.name,))
 
 
+def surf(duration: float = 12.0, sample_rate: int = DEFAULT_SAMPLE_RATE,
+         amplitude: float = 0.5, waves: int = 3, seed: int | None = None,
+         cutoff: float = 900.0) -> Clip:
+    """Waves breaking and running back, as a loop that repeats without a seam.
+
+    ``waves`` is how many break in one pass of the loop, each at its own
+    moment and strength: a quick rise as it breaks and a long wash as it runs
+    back, over a quieter bed that never stops. The noise is dark, rolled away
+    above ``cutoff`` hertz and tilted towards the bottom, which is the
+    difference between surf and a hiss.
+
+    Built for looping. The noise is made over the whole clip in the frequency
+    domain, which makes it periodic, and each wave that runs past the end of
+    the clip wraps round to its start, so the last sample leads into the
+    first one.
+    """
+    times = _time_base(duration, sample_rate)
+    if not times.size:
+        return Clip(np.zeros(0, dtype=np.float32), sample_rate, name='surf')
+    generator = np.random.default_rng(seed)
+    span = float(times.size) / sample_rate
+    envelope = np.full(times.size, 0.22, dtype=np.float64)
+    count = max(1, int(waves))
+    starts = (np.arange(count) + generator.uniform(0.1, 0.9, count)) * span / count
+    for start, strength in zip(starts, generator.uniform(0.6, 1.0, count),
+                               strict=True):
+        since = np.mod(times - start, span)
+        rise = 1.0 - np.exp(-since / 0.35)
+        wash = np.exp(-since / 2.2)
+        envelope += strength * rise * wash
+    samples = _dark_noise(times.size, sample_rate, cutoff, seed, tilt=-2.0,
+                          floor=40.0) * envelope
+    peak = float(np.abs(samples).max())
+    if peak > 0.0:
+        samples *= float(amplitude) / peak
+    return Clip(samples.astype(np.float32), sample_rate, name='surf')
+
+
+#: The birds :func:`birdsong` draws from: each a range for the pitch its
+#: syllables start at in hertz, how far a syllable sweeps as a share of that,
+#: how many syllables a phrase has, and how long each lasts in seconds. A thin
+#: high trill, a fluting mid-range whistle and a short falling call, which
+#: between them read as woodland rather than as one bird.
+_BIRDS = (
+    ((5200.0, 6400.0), -0.25, (6, 11), (0.035, 0.06)),
+    ((2300.0, 3300.0), 0.35, (3, 5), (0.09, 0.16)),
+    ((3600.0, 4400.0), -0.45, (2, 3), (0.12, 0.2)),
+)
+
+
+def birdsong(duration: float = 10.0, sample_rate: int = DEFAULT_SAMPLE_RATE,
+             amplitude: float = 0.4, birds: int = 3, seed: int | None = None,
+             phrases: float = 0.6) -> Clip:
+    """Several birds singing, near and far, as a loop that repeats without a seam.
+
+    Each bird has a song of its own: a phrase of short whistled syllables,
+    each a sweep in pitch with a quick vibrato and a soft second partial,
+    repeated at irregular intervals. ``phrases`` is how many phrases a bird
+    sings a second, on average, and ``birds`` how many sing (the kinds in
+    :data:`_BIRDS` taken in turn). Each bird sits at its own distance, so the
+    loop has a near singer and quieter ones behind it.
+
+    A phrase that runs past the end of the clip wraps round to its start, so
+    the clip loops without a gap or a click.
+    """
+    frames = max(0, int(duration * sample_rate))
+    if not frames:
+        return Clip(np.zeros(0, dtype=np.float32), sample_rate, name='birdsong')
+    generator = np.random.default_rng(seed)
+    span = float(frames) / sample_rate
+    samples = np.zeros(frames, dtype=np.float64)
+    for bird in range(max(1, int(birds))):
+        pitch, sweep, syllables, length = _BIRDS[bird % len(_BIRDS)]
+        level = 1.0 / (1.0 + 0.8 * bird)
+        base = generator.uniform(*pitch)
+        count = generator.poisson(max(float(phrases), 0.0) * span) + 1
+        for start in generator.uniform(0.0, span, count):
+            at = start
+            for _syllable in range(generator.integers(*syllables, endpoint=True)):
+                long = generator.uniform(*length)
+                _add_wrapped(samples, _syllable_samples(
+                    long, sample_rate, base * generator.uniform(0.94, 1.06),
+                    sweep, generator.uniform(18.0, 34.0)) * level,
+                    int(at * sample_rate))
+                at += long * generator.uniform(1.2, 1.8)
+    peak = float(np.abs(samples).max())
+    if peak > 0.0:
+        samples *= float(amplitude) / peak
+    return Clip(samples.astype(np.float32), sample_rate, name='birdsong')
+
+
+def _syllable_samples(length: float, sample_rate: int, start: float,
+                      sweep: float, vibrato: float) -> np.ndarray:
+    """One whistled syllable: a pitch sweep with vibrato and a soft overtone.
+
+    ``sweep`` is how far the pitch moves over the syllable as a share of
+    ``start``, and ``vibrato`` the wobble's rate in hertz. The envelope is
+    half a sine, so the syllable starts and stops without a click.
+    """
+    times = _time_base(length, sample_rate)
+    if not times.size:
+        return np.zeros(0, dtype=np.float64)
+    shape = times / max(float(times[-1]), 1e-9)
+    frequency = start * (1.0 + sweep * shape) * (
+        1.0 + 0.03 * np.sin(2.0 * np.pi * vibrato * times))
+    phase = 2.0 * np.pi * np.cumsum(frequency) / sample_rate
+    tone = np.sin(phase) + 0.18 * np.sin(2.0 * phase)
+    return cast(np.ndarray, tone * np.sin(np.pi * shape))
+
+
+def _add_wrapped(into: np.ndarray, samples: np.ndarray, at: int) -> None:
+    """Add ``samples`` into ``into`` from ``at``, wrapping past its end."""
+    size = into.size
+    remaining = samples
+    at %= size
+    while remaining.size:
+        take = min(remaining.size, size - at)
+        into[at:at + take] += remaining[:take]
+        remaining = remaining[take:]
+        at = 0
+
+
 def _darkened(samples: np.ndarray, sample_rate: int,
               cutoff: float) -> np.ndarray:
     """One pass of the same roll-off :func:`_dark_noise` shapes noise with."""
