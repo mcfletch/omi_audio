@@ -126,7 +126,7 @@ target-version = "py310"
 # N: naming, which is what let a single camelCase method through unnoticed.
 # UP: the modern syntax this package's floor (3.10) allows -- above all
 #     `dict[str, Any]` and `X | None` over the `typing` spellings.
-select = ["E", "W", "F", "B", "N", "UP"]
+select = ["E", "W", "F", "B", "N", "UP", "PGH003", "PGH004", "PLE0604", "PLE0605"]
 # `%`-formatting is the house style across this workspace, and it is what the
 # logging calls have to use anyway: `log.warning('%s', x)` defers the formatting
 # until somebody is listening, which an f-string cannot do.  Rewriting several
