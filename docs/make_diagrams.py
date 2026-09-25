@@ -464,7 +464,11 @@ def write(directory: pathlib.Path) -> list[pathlib.Path]:
     written = []
     for name, draw in sorted(DIAGRAMS.items()):
         target = directory / name
-        target.write_text(draw(), encoding='utf-8')
+        # Written beside the diagram and renamed over it, so an interrupted
+        # run leaves each diagram whole, old or new.
+        partial = target.with_name(target.name + '.partial')
+        partial.write_text(draw(), encoding='utf-8')
+        partial.replace(target)
         written.append(target)
     return written
 
