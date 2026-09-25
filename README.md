@@ -111,6 +111,7 @@ In the order sound travels through them:
 | `synth` | Tones, chirps, noise, impacts, rumbles and looping ambience (surf, birdsong) made out of arithmetic, so demos and tests need no assets and no licences |
 | `mixer` | A fixed voice pool summed into stereo blocks: allocation-free, lock-free on the audio thread, priority stealing, gain ramping, an underwater low-pass |
 | `reverb` | The sound of the place the listener is in: a comb-filter reverb over the whole mix |
+| `vehicle` | A road vehicle's motor, tyres, wind and impacts, from its speed, tyre scrub and throttle, with a tuning of the vehicle's own figures |
 | `device` | Where blocks go — `miniaudio`, or silence |
 | `engine` | The one object an application holds |
 

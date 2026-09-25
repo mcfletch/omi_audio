@@ -151,6 +151,38 @@ A `global` emitter is heard the same wherever the listener stands, so there is
 nothing to aim and nothing to update. Passing no emitter at all does the same
 thing.
 
+### A vehicle
+
+```python
+from omi_audio.vehicle import VehicleSound, VehicleSoundTuning, motor_clip
+
+tuning = VehicleSoundTuning(tyre_scrub_from=0.25, tyre_scrub_at=3.5)
+sound = VehicleSound(tuning)
+motor = engine.play(motor_clip(tuning), loop=True, gain=0.0)
+# once a frame:
+sound.update(dt, speed=vehicle.speed(), slip=mean_wheel_slip,
+             throttle=vehicle.throttle, grounded=any_wheel_grounded)
+motor.set_gain_pan(sound.motor.gain, 0.0)
+motor.set_rate(sound.motor.rate)
+```
+
+`VehicleSound` turns road speed (m/s), tyre scrub (the sideways speed at the
+contact patch, m/s, which is `omi_physics`' `Wheel.slip`), throttle (0 to 1)
+and whether any wheel is on the ground into a gain and a playback rate for
+three loops: the motor (`motor_clip`), the tyres (`tyre_clip`) and the wind
+(`wind_clip`). The motor's pitch follows the road speed and never drops under
+`motor_idle`; tyre noise is rolling plus a scrub that comes in between
+`tyre_scrub_from` and `tyre_scrub_at`; wind goes as the square of speed. Every
+gain moves at most full scale in `settle` seconds, so nothing clicks.
+`sound.hit(closing)` is the gain for a one-shot `impact_clip` at a closing
+speed in m/s: nothing under `hit_floor`, full scale at `hit_at`.
+
+`VehicleSoundTuning` holds every figure; the defaults suit a small electric
+car. The scrub band is the one worth measuring for a particular vehicle: set
+`tyre_scrub_from` above the scrub its tyres show in ordinary cornering, and
+`tyre_scrub_at` at a full slide. `OpenGLContext.audio.vehicle` wraps all of this
+as scene nodes.
+
 ## Two volumes, and they multiply
 
 | | Who owns it | Written by |

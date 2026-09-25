@@ -26,6 +26,10 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   the next block.
 - `Clip.wav_bytes()`: a clip as a mono 16-bit PCM WAV file, for shipping
   audio made in code as a file any decoder reads.
+- `omi_audio.vehicle`: a road vehicle's motor whine, tyre roll and scrub, wind
+  and impacts, driven from speed, tyre scrub, throttle and ground contact, with
+  a `VehicleSoundTuning` of the vehicle's own figures. See
+  `docs/GAME-INTEGRATION.md`.
 
 ## [0.3.0a1] — 2026-09-12
 
