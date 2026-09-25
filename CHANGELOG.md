@@ -31,6 +31,12 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   a `VehicleSoundTuning` of the vehicle's own figures. See
   `docs/GAME-INTEGRATION.md`.
 
+### Changed
+
+- The warning `open_device()` logs when a backend fails in an undocumented
+  way, and the debug line logged when the bundled `libopus` will not load,
+  carry the exception's traceback.
+
 ## [0.3.0a1] — 2026-09-12
 
 ### Added

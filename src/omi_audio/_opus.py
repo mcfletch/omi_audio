@@ -124,8 +124,10 @@ def _libopus() -> Any:
         try:
             _library = _bind(_loader.load_libopus())
             return _library
-        except Exception as error:          # noqa: BLE001 - fall through to the system
-            log.debug('opuslib_next did not yield a library (%s)', error)
+        except Exception as error:
+            # A third-party loader failing in any way leaves the system library
+            # to try, as a missing package does.
+            log.debug('opuslib_next did not yield a library (%s)', error, exc_info=True)
     name = ctypes.util.find_library('opus')
     if name:
         try:

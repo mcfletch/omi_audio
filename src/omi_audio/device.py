@@ -177,7 +177,7 @@ def open_device(sample_rate: int = DEFAULT_SAMPLE_RATE, channels: int = 2,
     except Exception as error:
         # A backend that fails in a way it never documented is still just a
         # machine without sound; it must not be a machine that will not start.
-        log.warning('audio backend failed (%s); running silently.', error)
+        log.warning('audio backend failed (%s); running silently.', error, exc_info=True)
     return NullDevice(sample_rate=sample_rate, channels=channels)
 
 

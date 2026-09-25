@@ -30,7 +30,7 @@ import sys
 # Importable from a checkout without installing, since this is a build step.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'src'))
 
-from omi_audio import spatial                                       # noqa: E402
+from omi_audio import spatial
 
 #: Axes, rules and body text: mid grey, legible against white and against black.
 INK = '#8a8a8a'

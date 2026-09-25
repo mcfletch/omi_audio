@@ -12,7 +12,10 @@ is there to decode. ``tests/fetch_opus_samples.py`` puts one in the cache these
 look in by default; ``OMI_AUDIO_OPUS_SAMPLES`` names a different tree instead.
 """
 
+import ctypes.util
 import os
+import sys
+import types
 
 import numpy as np
 import pytest
@@ -157,6 +160,46 @@ class TestDecoding:
         monkeypatch.setattr(_opus, '_libopus', lambda: None)
         with pytest.raises(_opus.OpusError, match='libopus'):
             _opus.decode(ogg_stream([opus_head(), b'OpusTags', b'x']), 'x.opus')
+
+
+class TestFindingTheLibrary:
+    """The bundled ``libopus`` first, then the system's, then none."""
+
+    @pytest.fixture
+    def bundled(self, monkeypatch):
+        """Install a stand-in ``opuslib_next`` whose loader runs ``load``,
+        with no system library behind it and nothing looked up yet."""
+        def install(load):
+            package = types.ModuleType('opuslib_next')
+            package._loader = types.SimpleNamespace(load_libopus=load)
+            monkeypatch.setitem(sys.modules, 'opuslib_next', package)
+        monkeypatch.setattr(_opus, '_library', None)
+        monkeypatch.setattr(_opus, '_attempted', False)
+        monkeypatch.setattr(ctypes.util, 'find_library', lambda name: None)
+        return install
+
+    @pytest.mark.parametrize('failure', [
+        RuntimeError('no bundled library'), OSError('cannot load'),
+        TypeError('a loader that breaks some other way')])
+    def test_a_bundled_loader_that_fails_falls_through_to_the_system(
+            self, bundled, failure):
+        def load():
+            raise failure
+        bundled(load)
+        assert _opus.available() is False
+
+    def test_a_library_without_the_entry_points_falls_through(self, bundled):
+        bundled(object)
+        assert _opus.available() is False
+
+    def test_the_bundled_failure_is_logged_with_its_traceback(self, bundled, caplog):
+        def load():
+            raise OSError('cannot load')
+        bundled(load)
+        with caplog.at_level('DEBUG', logger='omi_audio._opus'):
+            _opus.available()
+        failures = [record for record in caplog.records if record.exc_info]
+        assert [record.exc_info[0] for record in failures] == [OSError]
 
 
 class TestTheClipSeam:

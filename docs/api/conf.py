@@ -19,11 +19,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'src'))
 
-from omi_audio import __version__                                  # noqa: E402
+from omi_audio import __version__
 
 project = 'omi_audio'
 author = 'Mike C. Fletcher'
-copyright = '2026, Mike C. Fletcher'                               # noqa: A001
+copyright = '2026, Mike C. Fletcher'
 release = __version__
 version = __version__
 

@@ -227,6 +227,19 @@ class TestOpenDevice:
         monkeypatch.setattr(_backend, 'backend', lambda: Exploding())
         assert open_device(sample_rate=8000).silent is True
 
+    def test_an_undocumented_failure_is_logged_with_its_traceback(
+            self, monkeypatch, caplog):
+        """The one warning is all a developer gets, so it carries the trace."""
+        def exploding():
+            raise RuntimeError('this miniaudio build is broken')
+
+        monkeypatch.setattr(_backend, 'backend', exploding)
+        with caplog.at_level('WARNING'):
+            open_device(sample_rate=8000)
+        [record] = caplog.records
+        assert record.exc_info is not None
+        assert record.exc_info[0] is RuntimeError
+
 
 class TestAvailability:
     def test_availability_is_reported_as_a_boolean(self):
