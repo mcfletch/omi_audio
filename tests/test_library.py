@@ -5,6 +5,8 @@ The point of this module is a negative: `omi_audio` must never turn a glTF
 below are as much about what does **not** happen as about what does.
 """
 
+import base64
+
 import numpy as np
 import pytest
 
@@ -144,15 +146,19 @@ class TestAsking:
             library.fail(0, 'still gone')
         assert len(caplog.records) == 1
 
-    def test_the_reason_names_something_a_reader_can_find(self):
+    def test_the_reason_names_something_a_reader_can_find(self, caplog):
         library = AudioLibrary(model.AudioDocument(
             audio=[model.Audio(uri='sounds/river.ogg', name='River')]))
-        assert 'River' in library._name(0)
-        assert 'audio 0' in library._name(0)
+        with caplog.at_level('WARNING'):
+            library.fail(0, 'gone')
+        assert 'no sound for River (audio 0): gone' in caplog.text
 
-    def test_an_unnamed_entry_still_produces_a_usable_label(self):
-        assert AudioLibrary(document(''))._name(0) == 'audio 0'
-        assert AudioLibrary(model.AudioDocument())._name(3) == 'audio 3'
+    def test_an_unnamed_entry_still_produces_a_usable_label(self, caplog):
+        with caplog.at_level('WARNING'):
+            AudioLibrary(document('')).fail(0, 'gone')
+            AudioLibrary(model.AudioDocument()).fail(3, 'gone')
+        assert [record.getMessage() for record in caplog.records] == [
+            'no sound for audio 0: gone', 'no sound for audio 3: gone']
 
 
 class TestChoosingACodec:
@@ -333,8 +339,6 @@ class TestBufferViewAudio:
     def test_a_data_uri_is_the_same_path_once_the_application_has_decoded_it(self):
         """glTF permits ``data:audio/...;base64,``; unpacking it is the loader's
         job, and what comes out is bytes, which is a case already covered."""
-        import base64
-
         encoded = base64.b64encode(wav_bytes(tone().samples, sample_rate=RATE))
         uri = 'data:audio/wav;base64,' + encoded.decode('ascii')
 

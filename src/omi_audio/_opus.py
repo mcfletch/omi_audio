@@ -117,7 +117,7 @@ def _libopus() -> Any:
         return _library
     _attempted = True
     try:
-        from opuslib_next import _loader
+        from opuslib_next import _loader  # noqa: PLC0415 - optional dependency
     except ImportError:
         pass
     else:

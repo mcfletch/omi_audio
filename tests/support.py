@@ -6,6 +6,7 @@ routing that through pytest's injection would make the test harder to read, not
 easier.  ``conftest.py`` holds the fixtures, and only the fixtures.
 """
 
+import io
 import math
 import struct
 import wave
@@ -79,8 +80,6 @@ def write_wav(path, samples, sample_rate=RATE, channels=1):
 
 def wav_bytes(samples, sample_rate=RATE, channels=1):
     """The same ``.wav``, as bytes, for the paths that never touch a disk."""
-    import io
-
     buffer = io.BytesIO()
     data = np.clip(np.asarray(samples, dtype='f'), -1.0, 1.0)
     pcm = (data * 32767.0).astype('<i2')

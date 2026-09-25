@@ -1,10 +1,13 @@
 """Decoded clips, the decode seam, and the cache in front of it."""
 
+import io
 import math
+import wave
 
 import numpy as np
 import pytest
 
+from omi_audio import _opus
 from omi_audio import clip as clipmodule
 from omi_audio import synth
 from omi_audio.clip import Clip, ClipCache, DecodeError
@@ -500,7 +503,7 @@ class TestDecode:
         Opus goes through libopus rather than the backend, so both have to be
         absent before the answer is no.
         """
-        monkeypatch.setattr(clipmodule._opus, 'available', lambda: False)
+        monkeypatch.setattr(_opus, 'available', lambda: False)
         assert clipmodule.decoder_available() is False
 
 
@@ -729,9 +732,6 @@ class TestWritingAClipAsWav:
     """A clip made in code is shipped as a file a decoder here reads back."""
 
     def test_it_is_a_mono_sixteen_bit_wav_at_the_clips_rate(self):
-        import io
-        import wave
-
         data = Clip(np.linspace(-1.0, 1.0, 101, dtype='f'), 22050).wav_bytes()
         with wave.open(io.BytesIO(data)) as handle:
             assert handle.getnchannels() == 1
@@ -741,9 +741,6 @@ class TestWritingAClipAsWav:
         assert pcm[0] == -32767 and pcm[-1] == 32767 and pcm[50] == 0
 
     def test_a_sample_past_full_scale_is_clipped_not_wrapped(self):
-        import io
-        import wave
-
         data = Clip(np.array([1.5, -2.0], 'f'), 8000).wav_bytes()
         with wave.open(io.BytesIO(data)) as handle:
             pcm = np.frombuffer(handle.readframes(2), '<i2')

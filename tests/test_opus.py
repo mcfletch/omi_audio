@@ -170,9 +170,10 @@ class TestFindingTheLibrary:
         """Install a stand-in ``opuslib_next`` whose loader runs ``load``,
         with no system library behind it and nothing looked up yet."""
         def install(load):
-            package = types.ModuleType('opuslib_next')
-            package._loader = types.SimpleNamespace(load_libopus=load)
-            monkeypatch.setitem(sys.modules, 'opuslib_next', package)
+            loader = types.ModuleType('opuslib_next._loader')
+            loader.load_libopus = load
+            monkeypatch.setitem(sys.modules, 'opuslib_next', types.ModuleType('opuslib_next'))
+            monkeypatch.setitem(sys.modules, 'opuslib_next._loader', loader)
         monkeypatch.setattr(_opus, '_library', None)
         monkeypatch.setattr(_opus, '_attempted', False)
         monkeypatch.setattr(ctypes.util, 'find_library', lambda name: None)

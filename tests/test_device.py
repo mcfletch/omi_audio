@@ -15,7 +15,12 @@ from typing import ClassVar
 import numpy as np
 import pytest
 
-from omi_audio import _backend
+try:
+    import miniaudio
+except ImportError:                     # the class that drives it skips itself
+    miniaudio = None
+
+from omi_audio import _backend, synth
 from omi_audio import device as devicemodule
 from omi_audio.device import DeviceError, NullDevice, describe, open_device
 from omi_audio.mixer import Mixer
@@ -282,34 +287,28 @@ class TestTheRealBackendAcceptsWhatTheMixerYields:
 
     def test_a_yielded_block_converts_to_exactly_the_bytes_a_period_needs(self):
         """``miniaudio`` memmoves what this returns straight into the device."""
-        import miniaudio
-
         mixer = Mixer(sample_rate=8000, max_block=512)
         stream = mixer.blocks()
         next(stream)
         for frames in (1, 32, 256, 512):
-            raw = miniaudio._bytes_from_generator_samples(stream.send(frames))
+            raw = miniaudio._bytes_from_generator_samples(  # noqa: SLF001 - miniaudio's block conversion has no public name
+                stream.send(frames))
             assert len(raw) == frames * 2 * 4, 'a %d-frame block short-changed the device' % (
                 frames,)
 
     def test_an_oversized_block_also_converts_to_a_full_period(self):
         """The path that used to hand back a short buffer of stale audio."""
-        import miniaudio
-
         mixer = Mixer(sample_rate=8000, max_block=64)
         stream = mixer.blocks()
         next(stream)
-        raw = miniaudio._bytes_from_generator_samples(stream.send(1024))
+        raw = miniaudio._bytes_from_generator_samples(  # noqa: SLF001 - miniaudio's block conversion has no public name
+            stream.send(1024))
         assert len(raw) == 1024 * 2 * 4
         assert not any(raw)
 
     def test_a_real_device_runs_the_mixer_on_its_own_audio_thread(self):
         """miniaudio's own null backend is a genuine device with a genuine
         thread and no hardware, so the whole hand-off runs in CI."""
-        import miniaudio
-
-        from omi_audio import synth
-
         mixer = Mixer(sample_rate=8000, max_block=4096)
         mixer.play(synth.tone(440.0, 5.0, sample_rate=8000, fade=0.0), loop=True)
         stream = mixer.blocks()

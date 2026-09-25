@@ -146,6 +146,9 @@ select = [
     "S102", "S202", "S301", "S307", "S310",
     # A mutable class attribute that is not declared a ClassVar.
     "RUF012",
+    # An import inside a function, which is kept for optional dependencies, and
+    # a private name reached from outside its module.
+    "PLC0415", "SLF001",
 ]
 # `%`-formatting is the house style across this workspace, and it is what the
 # logging calls have to use anyway: `log.warning('%s', x)` defers the formatting

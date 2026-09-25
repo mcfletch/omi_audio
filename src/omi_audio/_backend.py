@@ -34,7 +34,7 @@ def backend() -> Any:
     if not _attempted:
         _attempted = True
         try:
-            import miniaudio
+            import miniaudio  # noqa: PLC0415 - optional dependency
         except ImportError as error:
             log.info('miniaudio unavailable: %s', error)
         else:

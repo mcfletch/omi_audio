@@ -40,7 +40,9 @@ that practical: a sound fired sixty times a second is decoded once.
 
 from __future__ import annotations
 
+import io
 import logging
+import wave
 from typing import Any
 from collections.abc import Callable
 
@@ -135,9 +137,6 @@ class Clip:
         Samples past full scale are clipped to it. For shipping audio made in
         code (:mod:`omi_audio.synth`) as a file any decoder reads.
         """
-        import io
-        import wave
-
         pcm = (np.clip(self.samples, -1.0, 1.0) * 32767.0).round().astype('<i2')
         buffer = io.BytesIO()
         with wave.open(buffer, 'wb') as handle:

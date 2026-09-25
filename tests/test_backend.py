@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-from omi_audio import _backend
+from omi_audio import _backend, _opus
 from omi_audio import clip as clipmodule
 from omi_audio import device as devicemodule
 
@@ -32,12 +32,13 @@ class TestTheImportHappensOnce:
         assert _backend.available() is False
         assert any('miniaudio' in record.getMessage() for record in caplog.records)
 
-    def test_a_failed_import_is_not_retried(self, forgotten_import, monkeypatch):
+    def test_a_failed_import_is_not_retried(self, forgotten_import, monkeypatch, caplog):
         """A machine without the package pays for one failed import, not one
         per sound."""
         monkeypatch.setitem(sys.modules, 'miniaudio', None)
-        assert [_backend.backend() for _ in range(3)] == [None, None, None]
-        assert _backend._attempted is True
+        with caplog.at_level('INFO', logger='omi_audio._backend'):
+            assert [_backend.backend() for _ in range(3)] == [None, None, None]
+        assert len(caplog.records) == 1
 
     def test_the_answer_is_cached_once_it_is_known(self, forgotten_import):
         assert _backend.backend() is _backend.backend()
@@ -62,9 +63,9 @@ class TestOneAnswerForBothHalves:
     def test_decoding_is_still_possible_without_the_backend_where_opus_is(
             self, no_backend, monkeypatch):
         """The reason the two questions had to be separated."""
-        monkeypatch.setattr(clipmodule._opus, 'available', lambda: True)
+        monkeypatch.setattr(_opus, 'available', lambda: True)
         assert clipmodule.decoder_available() is True
-        monkeypatch.setattr(clipmodule._opus, 'available', lambda: False)
+        monkeypatch.setattr(_opus, 'available', lambda: False)
         assert clipmodule.decoder_available() is False
 
 

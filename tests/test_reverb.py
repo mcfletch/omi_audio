@@ -1,10 +1,14 @@
 """The reverb over the whole mix: what a tunnel or a cellar gives back."""
 
+from math import gcd
+
 import numpy as np
 import pytest
 
 from omi_audio import synth
 from omi_audio.clip import Clip
+from omi_audio.device import NullDevice
+from omi_audio.engine import AudioEngine
 from omi_audio.mixer import Mixer
 from omi_audio.reverb import COMB_DELAYS, Reverb, feedback_for
 
@@ -138,8 +142,6 @@ class TestLevel:
 
 class TestEngine:
     def test_the_engine_hands_out_its_mixers_reverb(self):
-        from omi_audio.device import NullDevice
-        from omi_audio.engine import AudioEngine
         engine = AudioEngine(device=NullDevice(sample_rate=RATE))
         try:
             assert engine.reverb is engine.mixer.reverb
@@ -167,8 +169,7 @@ def test_reverberating_a_block_allocates_nothing_measurable():
 class TestTheCombs:
     @pytest.mark.parametrize('rate', [22050, 44100, 48000, 96000])
     def test_no_two_delays_share_a_factor_in_samples(self, rate):
-        from math import gcd
-        delays = Reverb(rate, 256)._delays.ravel().tolist()
+        delays = Reverb(rate, 256)._delays.ravel().tolist()  # noqa: SLF001 - the tuning under test
         assert len(set(delays)) == len(delays)
         for i, first in enumerate(delays):
             for second in delays[i + 1:]:
@@ -177,7 +178,7 @@ class TestTheCombs:
     def test_the_delays_stay_near_the_ones_asked_for(self):
         reverb = Reverb(48000, 256)
         asked = np.array(COMB_DELAYS) * 48000
-        assert np.abs(reverb._delays[0] - asked).max() < 20
+        assert np.abs(reverb._delays[0] - asked).max() < 20  # noqa: SLF001 - the tuning under test
 
 
 class TestTheTail:
@@ -206,8 +207,7 @@ class TestTheTail:
 
     @pytest.mark.parametrize('decay, headroom', [(1.2, 3.5), (4.0, 4.5)])
     def test_a_tone_on_a_combs_pitch_stays_within_the_headroom(self, decay, headroom):
-        from omi_audio.clip import Clip
-        delay = int(Reverb(RATE, 256)._delays[0, 0])
+        delay = int(Reverb(RATE, 256)._delays[0, 0])  # noqa: SLF001 - the tuning under test
         pitch = RATE / delay * round(440.0 * delay / RATE)
         t = np.arange(RATE * 2) / RATE
         tone = Clip((0.2 * np.sin(2 * np.pi * pitch * t)).astype('f'), RATE)
@@ -228,5 +228,5 @@ class TestTheTail:
         mixer.reverb.decay = 0.3
         mixer.play(click())
         played(mixer, 400)
-        lines = mixer.reverb._lines
+        lines = mixer.reverb._lines  # noqa: SLF001 - the comb state under test
         assert not lines.any()
