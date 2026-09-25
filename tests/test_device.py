@@ -10,6 +10,7 @@ cannot notice that what the mixer yields is a shape the C layer will not take.
 """
 
 import time
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -25,7 +26,7 @@ from support import needs_miniaudio
 class FakePlaybackDevice:
     """Stands in for ``miniaudio.PlaybackDevice`` with no hardware behind it."""
 
-    instances = []
+    instances: ClassVar[list['FakePlaybackDevice']] = []
 
     def __init__(self, backend='ALSA', fail=False, **named):
         if fail:

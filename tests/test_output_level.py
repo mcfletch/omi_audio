@@ -116,7 +116,7 @@ class TestLevelAtAPosition:
     """A level, in dBFS, for an emitter at a stated position."""
 
     #: (label, position, minimum dBFS, maximum dBFS) at refDistance 1.
-    PLACES = [
+    PLACES = (
         ('one metre ahead', (0.0, 0.0, -1.0), -6.0, -2.0),
         ('one metre right', (1.0, 0.0, 0.0), -1.0, 0.5),
         ('one metre left', (-1.0, 0.0, 0.0), -1.0, 0.5),
@@ -124,7 +124,7 @@ class TestLevelAtAPosition:
         ('two metres ahead', (0.0, 0.0, -2.0), -12.0, -7.0),
         ('four metres ahead', (0.0, 0.0, -4.0), -18.0, -13.0),
         ('sixteen metres ahead', (0.0, 0.0, -16.0), -30.0, -25.0),
-    ]
+    )
 
     @pytest.mark.parametrize('label,position,low,high',
                              PLACES, ids=[p[0] for p in PLACES])

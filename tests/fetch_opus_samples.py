@@ -55,7 +55,7 @@ def fetch(into: str | None = None) -> int:
         # Written beside and moved into place, so an interrupted fetch leaves
         # no half a file for the tests to try to decode.
         partial = path + '.partial'
-        with urllib.request.urlopen(url) as source, open(partial, 'wb') as sink:
+        with urllib.request.urlopen(url) as source, open(partial, 'wb') as sink:  # noqa: S310 - https URLs from SAMPLES
             sink.write(source.read())
         os.replace(partial, path)
     found = [n for n in os.listdir(into) if n.lower().endswith('.opus')]

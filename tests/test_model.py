@@ -1,6 +1,7 @@
 """The ``KHR_audio_emitter`` data model, and reading it out of a glTF document."""
 
 import math
+from typing import Any, ClassVar
 
 import pytest
 
@@ -86,7 +87,7 @@ class TestGlobalEmitters:
 class TestFromGltf:
     """Reading the extension block a glTF document carries."""
 
-    DOCUMENT = {
+    DOCUMENT: ClassVar[dict[str, Any]] = {
         'emitters': [
             {'name': 'Positional Emitter', 'type': 'positional', 'gain': 0.8,
              'sources': [0, 1],
@@ -190,14 +191,14 @@ class TestMalformedDocuments:
     on another thread, far from the document that caused it.  Neither happens.
     """
 
-    NONSENSE = [
+    NONSENSE = (
         ('the whole block', 'not a block'),
         ('an emitters object', {'emitters': {'a': 1}}),
         ('an emitter that is a string', {'emitters': ['nonsense']}),
         ('an audio entry of None', {'audio': [None]}),
         ('a sources string', {'sources': 'abc'}),
         ('a positional block that is a list', {'emitters': [{'positional': [1, 2]}]}),
-    ]
+    )
 
     @pytest.mark.parametrize('label,block', NONSENSE, ids=[n[0] for n in NONSENSE])
     def test_it_loads_rather_than_raising(self, label, block):
@@ -396,7 +397,7 @@ class TestResolvingSources:
 class TestCodecExtensions:
     """``OMI_audio_ogg_vorbis`` and ``OMI_audio_opus`` on a source."""
 
-    BLOCK = {
+    BLOCK: ClassVar[dict[str, Any]] = {
         'audio': [{'uri': 'shot.mp3'}, {'uri': 'shot.ogg'}, {'uri': 'shot.opus'}],
         'sources': [{'audio': 0, 'extensions': {
             'OMI_audio_ogg_vorbis': {'audio': 1},

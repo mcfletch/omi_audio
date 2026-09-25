@@ -6,6 +6,7 @@ no clip.
 """
 
 import math
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -202,7 +203,8 @@ class TestEllipsoidReach:
 class TestEllipsoidGain:
     """VRML97's linear-in-decibels ramp between the two ellipsoids."""
 
-    INNER = dict(min_front=1.0, min_back=1.0, max_front=11.0, max_back=11.0)
+    INNER: ClassVar[dict[str, float]] = dict(
+        min_front=1.0, min_back=1.0, max_front=11.0, max_back=11.0)
 
     def test_inside_the_inner_ellipsoid_is_full_volume(self):
         assert spatial.ellipsoid_gain(0.5, 1.0, **self.INNER) == pytest.approx(1.0)
@@ -233,7 +235,8 @@ class TestEllipsoidGain:
 class TestEllipsoidGainAt:
     """The geometry a VRML97 consumer would otherwise derive for itself."""
 
-    FIELDS = dict(min_front=10.0, min_back=1.0, max_front=20.0, max_back=2.0)
+    FIELDS: ClassVar[dict[str, float]] = dict(
+        min_front=10.0, min_back=1.0, max_front=20.0, max_back=2.0)
 
     def test_it_agrees_with_working_the_cosine_out_by_hand(self):
         """The helper must be the same curve, not a second approximation."""
@@ -282,7 +285,8 @@ class TestListener:
     """The listener's pose, and where a point is relative to it."""
 
     #: Looking down -Z with +Y up -- the VRML/glTF default view.
-    DEFAULT = dict(position=(0.0, 0.0, 0.0), forward=(0.0, 0.0, -1.0), up=(0.0, 1.0, 0.0))
+    DEFAULT: ClassVar[dict[str, tuple[float, float, float]]] = dict(
+        position=(0.0, 0.0, 0.0), forward=(0.0, 0.0, -1.0), up=(0.0, 1.0, 0.0))
 
     def test_right_is_the_cross_of_forward_and_up(self):
         listener = spatial.Listener(**self.DEFAULT)

@@ -141,8 +141,11 @@ select = [
     "RUF100",
     # Naive datetimes.
     "DTZ",
-    # exec, unsafe tar extraction, pickle and eval.
-    "S102", "S202", "S301", "S307",
+    # exec, unsafe tar extraction, pickle, eval, and a URL opened with any
+    # scheme.
+    "S102", "S202", "S301", "S307", "S310",
+    # A mutable class attribute that is not declared a ClassVar.
+    "RUF012",
 ]
 # `%`-formatting is the house style across this workspace, and it is what the
 # logging calls have to use anyway: `log.warning('%s', x)` defers the formatting
