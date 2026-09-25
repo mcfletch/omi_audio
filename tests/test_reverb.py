@@ -162,3 +162,71 @@ def test_reverberating_a_block_allocates_nothing_measurable():
     tracemalloc.stop()
     grew = sum(entry.size_diff for entry in after.compare_to(before, 'filename'))
     assert grew < 4096, 'reverberating allocated %d bytes' % (grew,)
+
+
+class TestTheCombs:
+    @pytest.mark.parametrize('rate', [22050, 44100, 48000, 96000])
+    def test_no_two_delays_share_a_factor_in_samples(self, rate):
+        from math import gcd
+        delays = Reverb(rate, 256)._delays.ravel().tolist()
+        assert len(set(delays)) == len(delays)
+        for i, first in enumerate(delays):
+            for second in delays[i + 1:]:
+                assert gcd(first, second) == 1, (first, second)
+
+    def test_the_delays_stay_near_the_ones_asked_for(self):
+        reverb = Reverb(48000, 256)
+        asked = np.array(COMB_DELAYS) * 48000
+        assert np.abs(reverb._delays[0] - asked).max() < 20
+
+
+class TestTheTail:
+    def test_it_is_dense_rather_than_a_train_of_echoes(self):
+        mixer = Mixer(sample_rate=RATE)
+        mixer.reverb.level = 1.0
+        mixer.reverb.decay = 2.0
+        mixer.play(click())
+        heard = played(mixer, 32)[:, 0]
+        first = int(round(min(COMB_DELAYS) * RATE))
+        early = heard[first:first + RATE // 10]
+        assert np.mean(np.abs(early) > 1e-5) > 0.5
+
+    @pytest.mark.parametrize('decay', [0.5, 1.2, 4.0])
+    def test_at_full_level_it_is_about_as_loud_as_the_sound(self, decay):
+        def mix(level):
+            mixer = Mixer(sample_rate=RATE)
+            mixer.reverb.level = level
+            mixer.reverb.decay = decay
+            mixer.play(synth.noise(4.0, sample_rate=RATE, seed=3, amplitude=0.2), loop=True)
+            return played(mixer, 256)[RATE:]
+        dry = mix(0.0)
+        wet = mix(1.0) - dry
+        ratio = float(np.sqrt((wet ** 2).mean() / (dry ** 2).mean()))
+        assert 0.5 < ratio < 1.5
+
+    @pytest.mark.parametrize('decay, headroom', [(1.2, 3.5), (4.0, 4.5)])
+    def test_a_tone_on_a_combs_pitch_stays_within_the_headroom(self, decay, headroom):
+        from omi_audio.clip import Clip
+        delay = int(Reverb(RATE, 256)._delays[0, 0])
+        pitch = RATE / delay * round(440.0 * delay / RATE)
+        t = np.arange(RATE * 2) / RATE
+        tone = Clip((0.2 * np.sin(2 * np.pi * pitch * t)).astype('f'), RATE)
+
+        def mix(level):
+            mixer = Mixer(sample_rate=RATE)
+            mixer.reverb.level = level
+            mixer.reverb.decay = decay
+            mixer.reverb.damping = 0.0
+            mixer.play(tone, loop=True)
+            return played(mixer, 256)[RATE:]
+        wet = mix(1.0) - mix(0.0)
+        assert np.abs(wet).max() < 0.2 * headroom
+
+    def test_a_silent_tail_is_flushed_to_zero(self):
+        mixer = Mixer(sample_rate=RATE)
+        mixer.reverb.level = 1.0
+        mixer.reverb.decay = 0.3
+        mixer.play(click())
+        played(mixer, 400)
+        lines = mixer.reverb._lines
+        assert not lines.any()

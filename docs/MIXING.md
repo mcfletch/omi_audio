@@ -148,22 +148,39 @@ playing in it, so one setting covers every sound.
 | `decay` | seconds | 1.2 | Time for a sound to fall by 60 dB |
 | `damping` | 0 to 1 | 0.4 | How much of the top each return loses |
 
-It is four feedback comb filters per ear (Schroeder's arrangement), with delays
-of 29.7 to 43.7 ms that share no common factor, and the right ear half a
-millisecond later than the left so the tail spreads across the stereo field.
-Each comb's feedback is `10 ** (-3 * delay / decay)`, which falls by 60 dB over
-`decay` seconds.
+It is Schroeder's arrangement: four feedback comb filters per ear in parallel,
+then two allpass filters in series. The combs' delays are asked for as 29.7 to
+43.7 ms and the allpasses' as 5 and 1.7 ms; each becomes the nearest prime
+number of samples at the mixer's rate not already taken
+(`reverb.prime_delays`), so no two share a factor and their echoes do not
+coincide. The right ear's combs are half a millisecond later than the left's so
+the tail spreads across the stereo field. Each comb's feedback is
+`10 ** (-3 * delay / decay)`, which falls by 60 dB over `decay` seconds. The
+allpasses (gain 0.7) pass every frequency at the same level and smear each
+echo in time, so the tail is dense rather than a train of repeats.
 
-A comb reads a sample written one delay earlier, so a stretch of the block no
-longer than the shortest delay reads only samples written before it began. The
-block is processed in stretches of that length, each one vectorised, with the
-delay lines allocated once at construction. Damping is a weighted two-tap
-average of what each comb reads back; because every pass reads what the pass
-before wrote, the top drains out of the tail as it goes.
+Each comb's output is scaled by `sqrt(1 - g**2)` for its feedback `g`, and the
+combs' sum by `1 / sqrt(4)`. At a `level` of one, broadband sound — noise, an
+engine, rain — comes back at about its own loudness whatever the decay, so the
+mix of dry and wet is up to about 1.4 times as loud as the dry sound alone
+(the two are uncorrelated). A steady tone that sits exactly on one comb's
+pitch builds up in that comb: at a 1.2 s decay it can come back up to about
+three times its own level, and at 4 s up to four and a half. The mixer clips
+the sum at full scale, so leave headroom in a mix that will be reverberated
+at a high level.
+
+A filter reads a sample written one delay earlier, so a stretch of the block no
+longer than its delay reads only samples written before it began. The block is
+processed in stretches of that length, each one vectorised, with the delay
+lines allocated once at construction. Damping is a weighted two-tap average of
+what each comb reads back; because every pass reads what the pass before wrote,
+the top drains out of the tail as it goes.
 
 `level` is ramped across a block, as a gain is, so a listener driving into a
 tunnel hears the reverb arrive. Once the level has been nought for a block the
-delay lines are cleared and the reverb costs nothing until it is raised again:
+delay lines are cleared and the reverb costs nothing until it is raised again.
+A tail that has decayed below 1e-30 on every line is cleared as well, so the
+lines never hold subnormal floats, which some processors are slow to multiply:
 
 ```python
 engine.reverb.decay = 1.8

@@ -5,31 +5,42 @@ listener's own footsteps and engine included, and that is a property of the
 place rather than of any one sound. So this runs on the summed mix, after the
 voices are added up, and one setting covers every sound playing.
 
-The reverb is a bank of feedback comb filters, the arrangement Schroeder
-described: each comb is a delay line fed back into itself, so a sound comes
-back again and again, a little quieter and a little darker each time. Several
-combs with delays that share no common factor fill in each other's gaps, and
-the left and right ears get slightly different delays so the tail spreads
-across the stereo field instead of sitting in the middle.
+The reverb is Schroeder's arrangement: a bank of feedback comb filters in
+parallel, then allpass filters in series. Each comb is a delay line fed back
+into itself, so a sound comes back again and again, a little quieter and a
+little darker each time. The combs' delays are prime numbers of samples, all
+different, so no two share a factor and their echoes do not land together and
+ring at one pitch. The allpasses pass every frequency at the same level and
+smear each echo in time, which turns the combs' train of repeats into a dense
+tail. The left and right ears get slightly different comb delays, so the tail
+spreads across the stereo field instead of sitting in the middle.
 
 It is built for the audio thread the way :mod:`~omi_audio.mixer` is:
 
 * The delay lines are allocated once, at construction, for the longest delay
-  any comb uses, and :meth:`Reverb.process` writes into them in place.
-* A comb's feedback reads a sample written one delay ago, so a stretch of the
-  block no longer than the shortest delay reads only samples written before
-  it started. The block is processed in stretches of that length, each one
+  any filter uses, and :meth:`Reverb.process` writes into them in place.
+* A filter's feedback reads a sample written one delay ago, so a stretch of
+  the block no longer than its delay reads only samples written before it
+  started. The block is processed in stretches of that length, each one
   vectorised, and no sample-by-sample loop runs in Python.
 * The damping, which darkens each return, is a two-tap average of the samples
   read back. It is applied to what is read rather than inside the recursion,
   which keeps the stretch vectorised and still takes the top off each pass in
   turn, since each pass reads what the previous one wrote.
 
-:attr:`Reverb.level` is how much of the reverb is heard, from nought to one,
-and it is ramped across a block as a voice's gain is, so a listener walking
-into a tunnel hears the reverb arrive rather than switch on. At nought, once
-the ramp has finished, the processing stops and the delay lines are cleared,
-so a place that has no reverb costs nothing.
+Each comb's output is scaled by ``sqrt(1 - g**2)`` for its feedback ``g``, the
+square root of the energy its echoes add up to, and the combs' sum by one over
+the square root of their number. Broadband sound therefore comes back about as
+loud as it went in, whatever the decay: :attr:`Reverb.level` is the reverb's
+loudness against the dry mix.
+
+:attr:`Reverb.level` runs from nought to one, and it is ramped across a block
+as a voice's gain is, so a listener walking into a tunnel hears the reverb
+arrive rather than switch on. At nought, once the ramp has finished, the
+processing stops and the delay lines are cleared, so a place that has no
+reverb costs nothing. A tail that has decayed below :data:`SILENT` is cleared
+too, so its lines never hold subnormal numbers, which some processors handle
+far more slowly than ordinary ones.
 """
 
 from __future__ import annotations
@@ -39,17 +50,62 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ['Reverb', 'COMB_DELAYS', 'SPREAD', 'feedback_for']
+__all__ = ['Reverb', 'ALLPASS_DELAYS', 'ALLPASS_GAIN', 'COMB_DELAYS', 'SILENT',
+           'SPREAD', 'feedback_for', 'prime_delays']
 
-#: The comb delays, in seconds. Schroeder's own choice of roughly 30 to 45
-#: milliseconds, picked so no two share a factor, which keeps their echoes
-#: from landing together and ringing at one pitch.
+#: The comb delays asked for, in seconds: Schroeder's own range of roughly 30
+#: to 45 milliseconds. Each becomes the nearest prime number of samples not
+#: already taken, at the rate the reverb runs at (:func:`prime_delays`).
 COMB_DELAYS = (0.0297, 0.0371, 0.0411, 0.0437)
 
-#: How much later the right ear's combs are than the left's, in seconds. A
-#: millisecond is enough to decorrelate the two tails, so the reverb is heard
+#: How much later the right ear's combs are than the left's, in seconds. Half
+#: a millisecond is enough to decorrelate the two tails, so the reverb is heard
 #: around the listener rather than in the middle of the head.
 SPREAD = 0.00052
+
+#: The series allpass delays, in seconds, taken to primes as the combs are.
+ALLPASS_DELAYS = (0.005, 0.0017)
+
+#: The allpasses' gain. Schroeder's 0.7 diffuses without colouring the tail.
+ALLPASS_GAIN = 0.7
+
+#: A tail whose every delay line is quieter than this is cleared: about 600 dB
+#: below full scale, and far above the smallest normal float32 (1.2e-38).
+SILENT = 1e-30
+
+
+def prime_delays(seconds: list[float] | tuple[float, ...], sample_rate: int,
+                 taken: set[int] | None = None) -> list[int]:
+    """Each of ``seconds`` as the nearest prime number of samples not in ``taken``.
+
+    Distinct primes share no factor, which is what keeps the echoes of several
+    delay lines from coinciding. ``taken`` gathers the delays chosen, so a
+    second call avoids those of the first.
+    """
+    used = taken if taken is not None else set()
+    chosen = []
+    for delay in seconds:
+        target = max(2, int(round(float(delay) * sample_rate)))
+        for offset in range(target):
+            below, above = target - offset, target + offset
+            if below >= 2 and below not in used and _is_prime(below):
+                found = below
+                break
+            if above not in used and _is_prime(above):
+                found = above
+                break
+        used.add(found)
+        chosen.append(found)
+    return chosen
+
+
+def _is_prime(n: int) -> bool:
+    """Whether ``n`` is prime, by trial division; the delays are a few thousand."""
+    if n < 2:
+        return False
+    if n % 2 == 0:
+        return n == 2
+    return all(n % k for k in range(3, math.isqrt(n) + 1, 2))
 
 
 def feedback_for(delay: float, decay: float) -> float:
@@ -66,13 +122,14 @@ def feedback_for(delay: float, decay: float) -> float:
 
 
 class Reverb:
-    """A stereo comb-filter reverb over blocks of up to ``max_block`` frames.
+    """A stereo reverb of combs and allpasses over blocks of up to ``max_block`` frames.
 
     ``decay`` is the reverberation time in seconds, the time a sound takes to
     fall by 60 dB. ``damping`` is how much of the top each return loses, from
     nought (none) to one (the most). ``level`` is how loud the reverb is
-    against the dry mix. All three are plain floats the control thread may
-    write at any time.
+    against the dry mix: at one, broadband sound comes back at about its own
+    loudness. All three are plain floats the control thread may write at any
+    time.
     """
 
     def __init__(self, sample_rate: int, max_block: int) -> None:
@@ -82,11 +139,15 @@ class Reverb:
         self.level = 0.0
         #: The level the last block ended at, which the next one ramps from.
         self._level = 0.0
+        taken: set[int] = set()
         #: Each comb's delay in frames, one row per ear.
         self._delays = np.array(
-            [[max(2, int(round(d * self.sample_rate))) for d in COMB_DELAYS],
-             [max(2, int(round((d + SPREAD) * self.sample_rate)))
-              for d in COMB_DELAYS]], dtype=np.int64)
+            [prime_delays(COMB_DELAYS, self.sample_rate, taken),
+             prime_delays([d + SPREAD for d in COMB_DELAYS], self.sample_rate, taken)],
+            dtype=np.int64)
+        #: Each allpass's delay in frames, the same for both ears.
+        self._allpass = np.array(prime_delays(ALLPASS_DELAYS, self.sample_rate, taken),
+                                 dtype=np.int64)
         longest = int(self._delays.max())
         #: The combs' delay lines: ear, comb, and the samples it last wrote.
         self._lines = np.zeros((2, len(COMB_DELAYS), longest), dtype=np.float32)
@@ -94,14 +155,19 @@ class Reverb:
         self._cursor = np.zeros((2, len(COMB_DELAYS)), dtype=np.int64)
         #: The last sample each line read, for the damping's two-tap average.
         self._previous = np.zeros((2, len(COMB_DELAYS)), dtype=np.float32)
+        #: The allpasses' delay lines and cursors: ear, allpass, samples.
+        self._allpass_lines = np.zeros(
+            (2, len(ALLPASS_DELAYS), int(self._allpass.max())), dtype=np.float32)
+        self._allpass_cursor = np.zeros((2, len(ALLPASS_DELAYS)), dtype=np.int64)
         #: The longest stretch that can be processed in one go: every comb
         #: reads only what was written before the stretch began.
         self._stretch = int(self._delays.min())
         size = int(max_block)
+        buffer = max(self._stretch, int(self._allpass.max()))
         self._wet = np.zeros((size, 2), dtype=np.float32)
-        self._read = np.zeros(self._stretch, dtype=np.float32)
-        self._damped = np.zeros(self._stretch, dtype=np.float32)
-        self._written = np.zeros(self._stretch, dtype=np.float32)
+        self._read = np.zeros(buffer, dtype=np.float32)
+        self._damped = np.zeros(buffer, dtype=np.float32)
+        self._written = np.zeros(buffer, dtype=np.float32)
         self._steps = np.arange(1, size + 1, dtype=np.float32)
         self._ramp = np.zeros(size, dtype=np.float32)
         self._idle = True
@@ -120,8 +186,7 @@ class Reverb:
         level = max(0.0, min(1.0, _finite(self.level)))
         if level <= 0.0 and self._level <= 0.0:
             if not self._idle:
-                self._lines.fill(0.0)
-                self._previous.fill(0.0)
+                self._clear()
                 self._idle = True
             return
         self._idle = False
@@ -136,7 +201,9 @@ class Reverb:
             for comb in range(len(COMB_DELAYS)):
                 gain = feedback_for(self._delays[ear, comb] / self.sample_rate, decay)
                 self._comb(ear, comb, source, target, frames, gain, damping)
-        np.multiply(wet, 1.0 / len(COMB_DELAYS), out=wet)
+            for allpass in range(len(ALLPASS_DELAYS)):
+                self._diffuse(ear, allpass, target, frames)
+        np.multiply(wet, 1.0 / math.sqrt(len(COMB_DELAYS)), out=wet)
         ramp = self._ramp[:frames]
         if level == self._level:
             ramp.fill(level)
@@ -146,6 +213,20 @@ class Reverb:
         self._level = level
         wet *= ramp[:, None]
         dry += wet
+        if self._silent():
+            self._clear()
+
+    def _silent(self) -> bool:
+        """Whether every delay line has decayed below :data:`SILENT`."""
+        lines, diffusers = self._lines, self._allpass_lines
+        return bool(lines.max() < SILENT and lines.min() > -SILENT
+                    and diffusers.max() < SILENT and diffusers.min() > -SILENT)
+
+    def _clear(self) -> None:
+        """Empty every delay line."""
+        self._lines.fill(0.0)
+        self._previous.fill(0.0)
+        self._allpass_lines.fill(0.0)
 
     def _comb(self, ear: int, comb: int, source: NDArray[np.float32],
               target: NDArray[np.float32], frames: int, gain: float,
@@ -155,6 +236,7 @@ class Reverb:
         delay = int(self._delays[ear, comb])
         cursor = int(self._cursor[ear, comb])
         previous = float(self._previous[ear, comb])
+        scale = math.sqrt(max(0.0, 1.0 - gain * gain))
         done = 0
         while done < frames:
             count = min(self._stretch, frames - done)
@@ -177,11 +259,39 @@ class Reverb:
             np.multiply(read, gain, out=written)
             np.add(written, source[done:done + count], out=written)
             _put(line, cursor, written, delay)
+            np.multiply(read, scale, out=read)
             target[done:done + count] += read
             cursor = (cursor + count) % delay
             done += count
         self._cursor[ear, comb] = cursor
         self._previous[ear, comb] = previous
+
+    def _diffuse(self, ear: int, allpass: int, signal: NDArray[np.float32],
+                 frames: int) -> None:
+        """Run one allpass over ``signal``'s first ``frames`` samples, in place.
+
+        The line holds ``v[n] = x[n] + g * v[n - D]`` and the output is
+        ``v[n - D] - g * v[n]``, which passes every frequency at unit gain.
+        """
+        line = self._allpass_lines[ear, allpass]
+        delay = int(self._allpass[allpass])
+        cursor = int(self._allpass_cursor[ear, allpass])
+        g = ALLPASS_GAIN
+        done = 0
+        while done < frames:
+            count = min(delay, frames - done)
+            read = self._read[:count]
+            _take(line, cursor, count, delay, read)
+            stored = self._written[:count]
+            np.multiply(read, g, out=stored)
+            chunk = signal[done:done + count]
+            np.add(stored, chunk, out=stored)
+            _put(line, cursor, stored, delay)
+            np.multiply(stored, -g, out=chunk)
+            np.add(chunk, read, out=chunk)
+            cursor = (cursor + count) % delay
+            done += count
+        self._allpass_cursor[ear, allpass] = cursor
 
 
 def _take(line: NDArray[np.float32], start: int, count: int, size: int,
