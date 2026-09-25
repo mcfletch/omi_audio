@@ -24,6 +24,8 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   birds singing at different distances. Both loop without a seam.
 - `VoiceHandle.set_rate(rate)`: a playing sound's speed and pitch, changed from
   the next block.
+- `Clip.wav_bytes()`: a clip as a mono 16-bit PCM WAV file, for shipping
+  audio made in code as a file any decoder reads.
 
 ## [0.3.0a1] — 2026-09-12
 

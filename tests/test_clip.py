@@ -723,3 +723,28 @@ def test_normalising_silence_leaves_it_silent():
 def test_pi_is_not_needed_for_a_zero_length_tone():
     """A zero-length request is a clip with no frames, not an error."""
     assert synth.tone(math.pi, 0.0, sample_rate=8000).frames == 0
+
+
+class TestWritingAClipAsWav:
+    """A clip made in code is shipped as a file a decoder here reads back."""
+
+    def test_it_is_a_mono_sixteen_bit_wav_at_the_clips_rate(self):
+        import io
+        import wave
+
+        data = Clip(np.linspace(-1.0, 1.0, 101, dtype='f'), 22050).wav_bytes()
+        with wave.open(io.BytesIO(data)) as handle:
+            assert handle.getnchannels() == 1
+            assert handle.getsampwidth() == 2
+            assert handle.getframerate() == 22050
+            pcm = np.frombuffer(handle.readframes(101), '<i2')
+        assert pcm[0] == -32767 and pcm[-1] == 32767 and pcm[50] == 0
+
+    def test_a_sample_past_full_scale_is_clipped_not_wrapped(self):
+        import io
+        import wave
+
+        data = Clip(np.array([1.5, -2.0], 'f'), 8000).wav_bytes()
+        with wave.open(io.BytesIO(data)) as handle:
+            pcm = np.frombuffer(handle.readframes(2), '<i2')
+        assert list(pcm) == [32767, -32767]

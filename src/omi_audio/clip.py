@@ -129,6 +129,24 @@ class Clip:
         """How many samples the clip holds."""
         return int(self.samples.shape[0])
 
+    def wav_bytes(self) -> bytes:
+        """The clip as a WAV file: mono, 16-bit PCM, at the clip's rate.
+
+        Samples past full scale are clipped to it. For shipping audio made in
+        code (:mod:`omi_audio.synth`) as a file any decoder reads.
+        """
+        import io
+        import wave
+
+        pcm = (np.clip(self.samples, -1.0, 1.0) * 32767.0).round().astype('<i2')
+        buffer = io.BytesIO()
+        with wave.open(buffer, 'wb') as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(self.sample_rate)
+            handle.writeframes(pcm.tobytes())
+        return buffer.getvalue()
+
     @property
     def duration(self) -> float:
         """How long the clip lasts, in seconds, at its own rate."""

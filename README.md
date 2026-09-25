@@ -107,7 +107,7 @@ In the order sound travels through them:
 | `formats` | The glTF codec extensions — `OMI_audio_ogg_vorbis` and `OMI_audio_opus` — and which of them this installation can actually decode |
 | `library` | What a document's audio references have resolved to — the seam where **your** resolver, not this library, decides what a `uri` means |
 | `spatial` | Every gain curve — three glTF distance models, the Web Audio cone, VRML97's two ellipsoids, equal-power panning — and the listener's pose |
-| `clip` | Encoded audio → mono float32 at one rate, from a file or from bytes (`.glb` buffer views, `data:` URIs, downloads), decoded once |
+| `clip` | Encoded audio → mono float32 at one rate, from a file or from bytes (`.glb` buffer views, `data:` URIs, downloads), decoded once; and a clip back out as a WAV file |
 | `synth` | Tones, chirps, noise, impacts, rumbles and looping ambience (surf, birdsong) made out of arithmetic, so demos and tests need no assets and no licences |
 | `mixer` | A fixed voice pool summed into stereo blocks: allocation-free, lock-free on the audio thread, priority stealing, gain ramping, an underwater low-pass |
 | `reverb` | The sound of the place the listener is in: a comb-filter reverb over the whole mix |
