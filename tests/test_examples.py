@@ -25,7 +25,7 @@ orbit = _example('orbit')
 
 
 class TestOrbit:
-    def test_it_runs_to_completion_with_no_device_at_all(self, capsys):
+    def test_it_runs_to_completion_with_no_device_at_all(self):
         assert orbit.main(['--silent', '--seconds', '0.15', '--rate', '8000']) == 0
 
     def test_it_reports_the_output_it_chose(self, capsys):

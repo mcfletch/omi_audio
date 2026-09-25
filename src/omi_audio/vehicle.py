@@ -115,7 +115,7 @@ def wind_clip(tuning: VehicleSoundTuning = DEFAULT_TUNING,
 
 
 @cache
-def impact_clip(tuning: VehicleSoundTuning = DEFAULT_TUNING,
+def impact_clip(tuning: VehicleSoundTuning = DEFAULT_TUNING,  # noqa: ARG001 - the clip builders share one signature
                 sample_rate: int = DEFAULT_SAMPLE_RATE) -> Clip:
     """Hitting something: a decaying bang with body, played once."""
     return synth.rumble(0.9, sample_rate=sample_rate, amplitude=0.9,

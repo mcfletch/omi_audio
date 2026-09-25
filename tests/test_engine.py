@@ -272,14 +272,14 @@ class TestSourcePlayback:
         """An asynchronous fetch is an ordinary silence, not an error."""
         document = model.AudioDocument(audio=[model.Audio(uri='late.wav')],
                                        sources=[model.AudioSource(audio=0)])
-        library = engine.library(document, fetch=lambda *ignored: None)
+        library = engine.library(document, fetch=lambda *_: None)
         assert engine.play_source(document.sources[0], library) is None
         assert library.pending == (0,)
 
     def test_a_source_plays_once_its_audio_arrives(self, engine):
         document = model.AudioDocument(audio=[model.Audio(uri='late.wav')],
                                        sources=[model.AudioSource(audio=0)])
-        library = engine.library(document, fetch=lambda *ignored: None)
+        library = engine.library(document, fetch=lambda *_: None)
         engine.play_source(document.sources[0], library)
         library.supply(0, beep(5.0))
         assert engine.play_source(document.sources[0], library) is not None
@@ -342,12 +342,12 @@ class TestAutoplay:
         document = self.document()
         document.emitters[0] = model.AudioEmitter(name='river', sources=[0])
         library = engine.library(document, fetch=supplying(beep(5.0)))
-        engine.start_autoplay(library, place=lambda emitter: None)
+        engine.start_autoplay(library, place=lambda _emitter: None)
         assert float(np.abs(engine.mixer.mix(64)).max()) > 0.1
 
     def test_audio_that_will_not_resolve_is_simply_absent(self, engine):
         library = engine.library(self.document(),
-                                 fetch=lambda lib, i, a: lib.fail(i, 'no such file'))
+                                 fetch=lambda lib, i, _a: lib.fail(i, 'no such file'))
         assert engine.start_autoplay(library) == []
 
     def test_a_document_asking_for_nothing_starts_nothing(self, engine):
@@ -390,7 +390,7 @@ class TestMasterControls:
         engine.master_gain = 0.5
         assert engine.mixer.master_gain == pytest.approx(0.25)
 
-    def test_a_gain_passed_at_construction_reaches_the_mixer(self, engine):
+    def test_a_gain_passed_at_construction_reaches_the_mixer(self):
         """Two writers for one number would leave whichever lost last."""
         made = AudioEngine(device=NullDevice(sample_rate=RATE), master_gain=0.5)
         try:

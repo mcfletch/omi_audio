@@ -149,6 +149,8 @@ select = [
     # An import inside a function, which is kept for optional dependencies, and
     # a private name reached from outside its module.
     "PLC0415", "SLF001",
+    # A parameter nothing reads.
+    "ARG",
 ]
 # `%`-formatting is the house style across this workspace, and it is what the
 # logging calls have to use anyway: `log.warning('%s', x)` defers the formatting

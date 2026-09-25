@@ -491,13 +491,15 @@ class TestDecode:
         with pytest.raises(DecodeError):
             clipmodule.decode_file(str(tmp_path / 'absent.wav'))
 
-    def test_decoding_without_the_backend_raises_decode_error(self, tmp_path, no_backend):
+    @pytest.mark.usefixtures('no_backend')
+    def test_decoding_without_the_backend_raises_decode_error(self, tmp_path):
         """The package-absent path is real code, so it is tested rather than assumed."""
         with pytest.raises(DecodeError):
             clipmodule.decode_file(str(tmp_path / 'anything.wav'))
 
+    @pytest.mark.usefixtures('no_backend')
     def test_the_module_says_decoding_is_impossible_with_nothing_installed(
-            self, no_backend, monkeypatch):
+            self, monkeypatch):
         """`decoder_available` is "can anything decode", not "is miniaudio here".
 
         Opus goes through libopus rather than the backend, so both have to be
@@ -546,7 +548,8 @@ class TestDecodeBytes:
                                        sample_rate=8000, name='audio 0')
         assert clip.name == 'audio 0'
 
-    def test_decoding_without_the_backend_raises_decode_error(self, no_backend):
+    @pytest.mark.usefixtures('no_backend')
+    def test_decoding_without_the_backend_raises_decode_error(self):
         with pytest.raises(DecodeError):
             clipmodule.decode_bytes(b'anything')
 
@@ -569,8 +572,8 @@ class TestClipCache:
         assert first is second
         assert calls == [path]
 
-    def test_a_failing_decode_yields_silence_and_warns_once(self, tmp_path, caplog):
-        def failing_decode(name, sample_rate):
+    def test_a_failing_decode_yields_silence_and_warns_once(self, caplog):
+        def failing_decode(name, _sample_rate):
             raise DecodeError(name)
 
         cache = ClipCache(decode=failing_decode)
@@ -609,7 +612,7 @@ class TestClipCache:
     def test_the_cache_decodes_at_its_own_rate(self):
         seen = {}
 
-        def recording_decode(name, sample_rate):
+        def recording_decode(_name, sample_rate):
             seen['rate'] = sample_rate
             return synth.tone(440.0, 0.01, sample_rate=sample_rate)
 

@@ -45,7 +45,7 @@ class TestTheUriIsNeverResolved:
         """A library whose fetch records the ask and resolves nothing."""
         seen = []
         library = AudioLibrary(document(*uris), cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, index, audio: seen.append(audio.uri))
+                               fetch=lambda _lib, _index, audio: seen.append(audio.uri))
         return library, seen
 
     @pytest.mark.parametrize('uri', HOSTILE)
@@ -61,9 +61,9 @@ class TestTheUriIsNeverResolved:
         a file-existence oracle even when the decode fails."""
         decoded = []
         cache = ClipCache(sample_rate=RATE,
-                          decode=lambda name, rate: decoded.append(name))
+                          decode=lambda name, _rate: decoded.append(name))
         library = AudioLibrary(document(uri), cache=cache,
-                               fetch=lambda lib, index, audio: None)
+                               fetch=lambda _lib, _index, _audio: None)
         library.clip(0)
         assert decoded == []
 
@@ -80,7 +80,7 @@ class TestTheUriIsNeverResolved:
         library = AudioLibrary(
             document('http://example.invalid/river.mp3'),
             cache=ClipCache(sample_rate=RATE),
-            fetch=lambda lib, i, a: lib.supply(i, tone()))
+            fetch=lambda lib, i, _a: lib.supply(i, tone()))
         assert library.clip(0) is not None
 
 
@@ -88,7 +88,7 @@ class TestAsking:
     def test_the_first_ask_fetches_and_later_asks_do_not(self):
         asks = []
         library = AudioLibrary(document('a.wav'), cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: (asks.append(i),
+                               fetch=lambda lib, i, _a: (asks.append(i),
                                                         lib.supply(i, tone())))
         library.clip(0)
         library.clip(0)
@@ -97,7 +97,7 @@ class TestAsking:
     def test_an_index_that_names_nothing_is_never_fetched(self):
         asks = []
         library = AudioLibrary(document('a.wav'), cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: asks.append(i))
+                               fetch=lambda _lib, i, _a: asks.append(i))
         assert library.clip(7) is None
         assert library.clip(-1) is None
         assert library.clip(None) is None
@@ -106,7 +106,7 @@ class TestAsking:
     def test_a_source_resolves_through_its_own_index(self):
         library = AudioLibrary(document('a.wav', 'b.wav'),
                                cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: lib.supply(i, tone()))
+                               fetch=lambda lib, i, _a: lib.supply(i, tone()))
         assert library.clip_for(library.document.sources[1]) is not None
 
     def test_a_source_naming_no_audio_resolves_to_nothing(self):
@@ -116,14 +116,14 @@ class TestAsking:
     def test_a_slow_fetch_leaves_the_index_pending(self):
         library = AudioLibrary(document('a.wav', 'b.wav'),
                                cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: None)
+                               fetch=lambda _lib, _i, _a: None)
         library.clip(0)
         assert library.pending == (0,)
         assert library.ready(0) is False
 
     def test_a_download_that_lands_later_is_playable_from_then_on(self):
         library = AudioLibrary(document('a.wav'), cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: None)
+                               fetch=lambda _lib, _i, _a: None)
         assert library.clip(0) is None
         library.supply(0, tone())
         assert library.pending == ()
@@ -133,7 +133,7 @@ class TestAsking:
     def test_a_failed_index_is_never_asked_for_again(self):
         asks = []
         library = AudioLibrary(document('a.wav'), cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: (asks.append(i),
+                               fetch=lambda lib, i, _a: (asks.append(i),
                                                         lib.fail(i, 'gone')))
         library.clip(0)
         library.clip(0)
@@ -179,14 +179,14 @@ class TestChoosingACodec:
 
     def library(self, document, encodings, fetch=None):
         made = AudioLibrary(document, cache=ClipCache(sample_rate=RATE),
-                            fetch=fetch or (lambda lib, i, a: lib.supply(i, tone())))
+                            fetch=fetch or (lambda lib, i, _a: lib.supply(i, tone())))
         made.encodings = tuple(encodings)
         return made
 
     def test_a_build_that_decodes_vorbis_asks_for_the_vorbis_entry(self):
         asks = []
         library = self.library(self.coded(OMI_audio_ogg_vorbis=1), [formats.VORBIS],
-                               fetch=lambda lib, i, a: (asks.append(i),
+                               fetch=lambda lib, i, _a: (asks.append(i),
                                                         lib.supply(i, tone())))
         assert library.clip_for(library.document.sources[0]) is not None
         assert asks == [1]
@@ -194,14 +194,14 @@ class TestChoosingACodec:
     def test_a_build_that_cannot_decode_it_asks_for_the_fallback(self):
         asks = []
         library = self.library(self.coded(OMI_audio_ogg_vorbis=1), [],
-                               fetch=lambda lib, i, a: (asks.append(i),
+                               fetch=lambda lib, i, _a: (asks.append(i),
                                                         lib.supply(i, tone())))
         assert library.clip_for(library.document.sources[0]) is not None
         assert asks == [0]
 
     def test_an_alternative_that_will_not_resolve_falls_back_to_the_mp3(self):
         """The whole point of the fallback: a bad Ogg costs quality, not sound."""
-        def fetch(library, index, audio):
+        def fetch(library, index, _audio):
             if index == 1:
                 library.fail(index, 'the ogg is not there')
             else:
@@ -216,7 +216,7 @@ class TestChoosingACodec:
         sound whose better one simply had not landed yet."""
         asks = []
         library = self.library(self.coded(OMI_audio_ogg_vorbis=1), [formats.VORBIS],
-                               fetch=lambda lib, i, a: asks.append(i))
+                               fetch=lambda _lib, i, _a: asks.append(i))
         assert library.clip_for(library.document.sources[0]) is None
         assert asks == [1]
         library.supply(1, tone())
@@ -234,7 +234,7 @@ class TestChoosingACodec:
     def test_a_source_with_no_alternatives_is_unaffected(self):
         asks = []
         library = self.library(self.coded(), formats.ENCODINGS,
-                               fetch=lambda lib, i, a: (asks.append(i),
+                               fetch=lambda lib, i, _a: (asks.append(i),
                                                         lib.supply(i, tone())))
         assert library.clip_for(library.document.sources[0]) is not None
         assert asks == [0]
@@ -247,7 +247,7 @@ class TestChoosingACodec:
                    1: wav_bytes(long.samples, sample_rate=RATE)}
         library = self.library(
             self.coded(OMI_audio_ogg_vorbis=1), [formats.VORBIS],
-            fetch=lambda lib, i, a: lib.supply_bytes(i, encoded[i]))
+            fetch=lambda lib, i, _a: lib.supply_bytes(i, encoded[i]))
         clip = library.clip_for(library.document.sources[0])
         assert clip.frames == long.frames
 
@@ -269,7 +269,7 @@ class TestSupplying:
         """So one file behind two documents costs one decode."""
         decoded = []
 
-        def counting(name, rate):
+        def counting(name, _rate):
             decoded.append(name)
             return tone()
 
@@ -356,7 +356,7 @@ class TestReporting:
     def test_it_says_how_much_of_the_document_has_resolved(self):
         library = AudioLibrary(document('a.wav', 'b.wav', 'c.wav'),
                                cache=ClipCache(sample_rate=RATE),
-                               fetch=lambda lib, i, a: None)
+                               fetch=lambda _lib, _i, _a: None)
         library.supply(0, tone())
         library.clip(1)
         library.fail(2, 'gone')

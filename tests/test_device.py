@@ -185,7 +185,8 @@ class TestMiniaudioDevice:
         with pytest.raises(DeviceError):
             devicemodule.MiniaudioDevice(sample_rate=8000)
 
-    def test_without_the_package_it_raises_device_error(self, no_backend):
+    @pytest.mark.usefixtures('no_backend')
+    def test_without_the_package_it_raises_device_error(self):
         with pytest.raises(DeviceError):
             devicemodule.MiniaudioDevice(sample_rate=8000)
 
@@ -197,7 +198,8 @@ class TestOpenDevice:
         fake_backend()
         assert open_device(sample_rate=8000).silent is False
 
-    def test_a_missing_package_gives_silence_and_one_warning(self, no_backend, caplog):
+    @pytest.mark.usefixtures('no_backend')
+    def test_a_missing_package_gives_silence_and_one_warning(self, caplog):
         with caplog.at_level('WARNING'):
             device = open_device(sample_rate=8000)
         assert device.silent is True
@@ -212,7 +214,8 @@ class TestOpenDevice:
         assert device.silent is True
         assert len(caplog.records) == 1
 
-    def test_the_silent_device_keeps_the_requested_rate(self, no_backend):
+    @pytest.mark.usefixtures('no_backend')
+    def test_the_silent_device_keeps_the_requested_rate(self):
         """The mixer is built around the device's rate, so it must be honest."""
         assert open_device(sample_rate=22050).sample_rate == 22050
 
@@ -251,7 +254,8 @@ class TestAvailability:
     def test_availability_is_reported_as_a_boolean(self):
         assert isinstance(devicemodule.miniaudio_available(), bool)
 
-    def test_availability_follows_the_backend(self, no_backend):
+    @pytest.mark.usefixtures('no_backend')
+    def test_availability_follows_the_backend(self):
         assert devicemodule.miniaudio_available() is False
 
 

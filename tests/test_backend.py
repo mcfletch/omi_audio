@@ -22,8 +22,9 @@ def forgotten_import(monkeypatch):
 
 
 class TestTheImportHappensOnce:
+    @pytest.mark.usefixtures('forgotten_import')
     def test_an_absent_package_is_reported_rather_than_raised(
-            self, forgotten_import, monkeypatch, caplog):
+            self, monkeypatch, caplog):
         """``sys.modules[name] = None`` is how the import system spells
         "this is not here", so it exercises the real ``ImportError`` path."""
         monkeypatch.setitem(sys.modules, 'miniaudio', None)
@@ -32,7 +33,8 @@ class TestTheImportHappensOnce:
         assert _backend.available() is False
         assert any('miniaudio' in record.getMessage() for record in caplog.records)
 
-    def test_a_failed_import_is_not_retried(self, forgotten_import, monkeypatch, caplog):
+    @pytest.mark.usefixtures('forgotten_import')
+    def test_a_failed_import_is_not_retried(self, monkeypatch, caplog):
         """A machine without the package pays for one failed import, not one
         per sound."""
         monkeypatch.setitem(sys.modules, 'miniaudio', None)
@@ -40,7 +42,8 @@ class TestTheImportHappensOnce:
             assert [_backend.backend() for _ in range(3)] == [None, None, None]
         assert len(caplog.records) == 1
 
-    def test_the_answer_is_cached_once_it_is_known(self, forgotten_import):
+    @pytest.mark.usefixtures('forgotten_import')
+    def test_the_answer_is_cached_once_it_is_known(self):
         assert _backend.backend() is _backend.backend()
 
 
@@ -56,12 +59,14 @@ class TestOneAnswerForBothHalves:
     def test_both_halves_of_the_backend_report_the_same_availability(self):
         assert _backend.available() == devicemodule.miniaudio_available()
 
-    def test_making_the_backend_absent_moves_both_at_once(self, no_backend):
+    @pytest.mark.usefixtures('no_backend')
+    def test_making_the_backend_absent_moves_both_at_once(self):
         assert _backend.available() is False
         assert devicemodule.miniaudio_available() is False
 
+    @pytest.mark.usefixtures('no_backend')
     def test_decoding_is_still_possible_without_the_backend_where_opus_is(
-            self, no_backend, monkeypatch):
+            self, monkeypatch):
         """The reason the two questions had to be separated."""
         monkeypatch.setattr(_opus, 'available', lambda: True)
         assert clipmodule.decoder_available() is True

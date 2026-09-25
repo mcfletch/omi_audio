@@ -200,8 +200,8 @@ class TestMalformedDocuments:
         ('a positional block that is a list', {'emitters': [{'positional': [1, 2]}]}),
     )
 
-    @pytest.mark.parametrize('label,block', NONSENSE, ids=[n[0] for n in NONSENSE])
-    def test_it_loads_rather_than_raising(self, label, block):
+    @pytest.mark.parametrize('block', [n[1] for n in NONSENSE], ids=[n[0] for n in NONSENSE])
+    def test_it_loads_rather_than_raising(self, block):
         assert isinstance(model.from_gltf(block), model.AudioDocument)
 
     def test_a_gain_that_is_not_a_number_falls_back_to_the_default(self):

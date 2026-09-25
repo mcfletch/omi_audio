@@ -176,7 +176,7 @@ class TestFindingTheLibrary:
             monkeypatch.setitem(sys.modules, 'opuslib_next._loader', loader)
         monkeypatch.setattr(_opus, '_library', None)
         monkeypatch.setattr(_opus, '_attempted', False)
-        monkeypatch.setattr(ctypes.util, 'find_library', lambda name: None)
+        monkeypatch.setattr(ctypes.util, 'find_library', lambda _name: None)
         return install
 
     @pytest.mark.parametrize('failure', [
