@@ -5,21 +5,31 @@ Notable changes to `omi_audio`. The format follows
 follows [semantic versioning](https://semver.org/) — with the usual caveat that
 `0.x` makes no compatibility promise, and this is an alpha.
 
-## [Unreleased]
+## [0.4.0a1] — unreleased
 
 ### Added
 
-- **A reverb over the whole mix**, `Mixer.reverb` and `AudioEngine.reverb`: the
+- A reverb over the whole mix, `Mixer.reverb` and `AudioEngine.reverb`: the
   sound of the place the listener is in, with a `level`, a `decay` in seconds
-  and a `damping`. It is a bank of feedback comb filters processed in stretches
-  no longer than its shortest delay, so it runs vectorised and allocates
-  nothing on the audio thread, and at a level of nought it costs nothing. See
+  and a `damping`. It is Schroeder's arrangement, four feedback combs per ear
+  in parallel and two allpass diffusers in series, with every delay a
+  different prime number of samples. Each comb is scaled so broadband sound
+  comes back at about its own loudness at a `level` of one, whatever the
+  decay. It is processed in stretches no longer than its shortest delay, so it
+  runs vectorised and allocates nothing on the audio thread; at a level of
+  nought, or once its tail has decayed away, it costs nothing. See
   `docs/MIXING.md`.
-- **`synth.surf` and `synth.birdsong`**, looping ambience made without a
+- `synth.surf` and `synth.birdsong`, looping ambience made without a
   recording: waves breaking and running back over a dark noise bed, and several
   birds singing at different distances. Both loop without a seam.
+- `VoiceHandle.set_rate(rate)`: a playing sound's speed and pitch, changed from
+  the next block.
 
-- **Ogg Opus decoding**, through the new optional `opus` extra. `KHR_audio_emitter`
+## [0.3.0a1] — 2026-09-12
+
+### Added
+
+- Ogg Opus decoding, through the new optional `opus` extra. `KHR_audio_emitter`
   names Opus as the better of its two codec extensions and a document offering
   both prefers it, so a build that could not read it fell back to the MP3 every
   time. `formats.decodable()` now reports it.
@@ -35,8 +45,8 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   others. The whole chain is BSD-3-Clause.
 
   Opus is recognised from the bytes rather than from a name or a declared MIME
-  type, so a mislabelled payload still decodes and Ogg **Vorbis** — which is
-  also Ogg, and which the backend reads perfectly well — is left alone.
+  type, so a mislabelled payload still decodes and Ogg Vorbis — which is
+  also Ogg, and which the backend reads — is left alone.
 
 ### Changed
 
@@ -46,6 +56,10 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   backend involved, so the two questions have different answers on a machine
   with one library and not the other. Code wanting the backend specifically
   should ask `device.miniaudio_available()`.
+
+## [0.2.0a1] — 2026-08-06
+
+### Added
 
 - `synth.rumble` — the low end of the range: noise with the top rolled away
   over a tone that falls as it goes, optionally saturated. `synth.impact` is
@@ -89,7 +103,7 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
 
 ## [0.1.0a1] — 2026-07-31
 
-**Initial public release.** An alpha: the API may still move
+Initial public release. An alpha: the API may still move.
 
 ### The package
 
@@ -101,48 +115,46 @@ silent.
 
 ### What is in it
 
-- **The data model** (`model`) — `KHR_audio_emitter` as plain dataclasses, field
+- The data model (`model`) - `KHR_audio_emitter` as plain dataclasses, field
   for field, with the extension's own names and defaults. `from_gltf` /
   `to_gltf` round-trip, and `from_gltf` never raises whatever a third-party
   document contains. Node and scene emitter references are read, so a positional
   emitter can be located.
-- **Resolving a document's audio** (`library`) — `AudioLibrary` holds what one
+- Resolving a document's audio (`library`) - `AudioLibrary` holds what one
   document's `audio` array has resolved to. **A `uri` is never resolved, opened
   or interpreted by this package**: the application supplies a `fetch` callback,
   because only it knows where its content lives and what a third-party document
   may reach. Audio arrives as a local file, as bytes, or as an already-decoded
   clip — so `bufferView` audio (every `.glb`) and `data:` URIs play, and a
   download that lands three frames later is an ordinary silence until it does.
-- **Spatialisation** (`spatial`) — the extension's three distance models
+- Spatialisation (`spatial`) - the extension's three distance models
   implemented as written, the Web Audio cone, equal-power stereo panning with
   the behind-the-listener fold, and VRML97's two ellipsoids for `Sound` nodes,
   which nothing else can express. Every curve is a pure function of geometry.
-- **Clips** (`clip`) — encoded audio decoded to mono float32 at one rate, from a
+- Clips (`clip`) - encoded audio decoded to mono float32 at one rate, from a
   file or from bytes, decoded once and cached by name.
-- **The mixer** (`mixer`) — a fixed voice pool summed into stereo blocks:
+- The mixer (`mixer`) - a fixed voice pool summed into stereo blocks:
   allocation-free, lock-free on the audio thread, priority-based voice stealing,
   per-block gain ramping, and an underwater low-pass.
-- **The device seam** (`device`) — `miniaudio`, or silence. A missing package, a
+- The device seam (`device`) - `miniaudio`, or silence. A missing package, a
   device that will not open and a machine with no audio hardware all end in one
   warning and a `NullDevice`; `open_device()` cannot raise.
-- **The engine** (`engine`) — the one object an application holds, keeping
+- The engine (`engine`) - the one object an application holds, keeping
   decoding and path resolution off the audio thread.
-- **Synthesised sounds** (`synth`) — tones, chirps, noise and impacts made out of
+- Synthesised sounds (`synth`) - tones, chirps, noise and impacts made out of
   arithmetic, so a demo or a test needs no assets and no licences.
 
 ### Known limitations
 
-Stated here because finding them out later is worse:
-
-- **Stereo only**, and the pan carries azimuth alone — a sound overhead and one
+- Stereo only, and the pan carries azimuth alone: a sound overhead and one
   dead ahead are indistinguishable. Height needs an HRTF, surround needs more
   than two channels, and neither is implemented.
-- **No reverb, occlusion or doppler.** `muffle` is the only effect and it is a
+- No reverb, occlusion or doppler. `muffle` is the only effect and it is a
   master-bus low-pass.
-- **No streaming**: clips are decoded whole, into memory.
-- **No scheduling**: nothing here has a clock, so `autoplay` starts when the
+- No streaming: clips are decoded whole, into memory.
+- No scheduling: nothing here has a clock, so `autoplay` starts when the
   application says its scene has begun.
-- **`maxDistance` follows the extension's formulas, not its prose** — the two
+- `maxDistance` follows the extension's formulas, not its prose; the two
   disagree, and only the `linear` model uses it. `PositionalProperties.in_range()`
   is the other reading, kept explicit. See
   [SPATIALISATION.md](docs/SPATIALISATION.md#maxdistance-means-two-different-things-and-this-library-picks-one).
@@ -153,9 +165,10 @@ Stated here because finding them out later is worse:
   CI across Python 3.10–3.15 with and without the optional backend.
 - `py.typed` shipped, so the annotations are a promise downstream type checkers
   can use.
-- **Largely LLM-written**, and the README, the package docstring and
+- Largely LLM-written, and the README, the package docstring and
   [SECURITY.md](SECURITY.md) all say so. Review it before relying on it for
   anything that matters.
 
-[Unreleased]: https://github.com/mcfletch/omi_audio/compare/v0.1.0a1...HEAD
+[0.4.0a1]: https://github.com/mcfletch/omi_audio/compare/v0.3.0a1...HEAD
+[0.3.0a1]: https://github.com/mcfletch/omi_audio/releases/tag/v0.3.0a1
 [0.1.0a1]: https://github.com/mcfletch/omi_audio/releases/tag/v0.1.0a1

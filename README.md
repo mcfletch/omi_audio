@@ -121,17 +121,15 @@ with a diagram of each, generated from the code that implements it.
 
 ## What this does not do
 
-Stated up front, because finding out later is worse:
-
-- **Stereo only, and the pan carries azimuth alone.** A sound directly overhead
+- Stereo only, and the pan carries azimuth alone: a sound directly overhead
   and one dead ahead are indistinguishable. Height needs an HRTF and surround
   needs more than two channels; neither is here.
-- **No occlusion or doppler, and one reverb for the whole mix.** The effects
-  are master-bus ones: `muffle`, a low-pass, and `reverb`, the place the
-  listener is in. A sound cannot be reverberated on its own, and two places
-  cannot be heard at once.
-- **No streaming.** Clips are decoded whole into memory.
-- **No scheduling.** Nothing here has a clock; `autoplay` starts when your
+- No occlusion or doppler, and one reverb for the whole mix. The effects are
+  master-bus ones: `muffle`, a low-pass, and `reverb`, the place the listener
+  is in. A sound cannot be reverberated on its own, and two places cannot be
+  heard at once.
+- No streaming. Clips are decoded whole into memory.
+- No scheduling. Nothing here has a clock; `autoplay` starts when your
   application says the scene has begun.
 
 ## Using it from a scenegraph

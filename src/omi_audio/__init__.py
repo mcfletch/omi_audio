@@ -79,7 +79,7 @@ from omi_audio import (
 
 #: An alpha release, and the trove classifier and the version string agree
 #: about it.  See ``CHANGELOG.md``.
-__version__ = '0.3.0a1'
+__version__ = '0.4.0a1'
 
 __all__ = [
     'EXTENSION', 'Audio', 'AudioDevice', 'AudioDocument', 'AudioEmitter',
