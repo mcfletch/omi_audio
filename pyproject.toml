@@ -132,7 +132,16 @@ target-version = "py310"
 # N: naming, which is what let a single camelCase method through unnoticed.
 # UP: the modern syntax this package's floor (3.10) allows -- above all
 #     `dict[str, Any]` and `X | None` over the `typing` spellings.
-select = ["E", "W", "F", "B", "N", "UP", "PGH003", "PGH004", "PLE0604", "PLE0605"]
+select = [
+    "E", "W", "F", "B", "N", "UP", "PGH003", "PGH004", "PLE0604", "PLE0605",
+    # Swallowed errors: an `except` whose body is `pass` or `continue`, and an
+    # error logged without its traceback.
+    "S110", "S112", "TRY400",
+    # Naive datetimes.
+    "DTZ",
+    # exec, unsafe tar extraction, pickle and eval.
+    "S102", "S202", "S301", "S307",
+]
 # `%`-formatting is the house style across this workspace, and it is what the
 # logging calls have to use anyway: `log.warning('%s', x)` defers the formatting
 # until somebody is listening, which an f-string cannot do.  Rewriting several
