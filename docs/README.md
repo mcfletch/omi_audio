@@ -9,6 +9,8 @@ Deep-dive documentation for the `omi_audio` engine. Start with the
 - **[GAME-INTEGRATION.md](GAME-INTEGRATION.md)** — the frame loop, handle
   lifetime, voice budgets, priority, and the three patterns that cover most
   games. Read this one first if you are building something.
+- **[GRAPH.md](GRAPH.md)** — the processing graph: the Web Audio nodes,
+  channel counting, the threads, and capturing from an input.
 - **[VRML97.md](VRML97.md)** — the field-by-field map from a VRML97 `Sound` node
   onto this API, and what is not implemented.
 

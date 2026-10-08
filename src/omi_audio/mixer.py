@@ -20,7 +20,7 @@ shape follows from that:
   gain would be multiplied into the shared output buffer and survive the
   clipping -- numpy's ``clip`` passes NaN through -- so *one* bad emitter would
   silence every sound in the scene.  The check costs two comparisons where a
-  sound is aimed, and nothing at all where it is mixed; see :func:`_finite`.
+  sound is aimed, and nothing at all where it is mixed; see :func:`omi_audio._numbers.finite`.
 
 Gains are *ramped* across a block rather than applied as a step.  A gain that
 jumps from one block to the next is a discontinuity, and a discontinuity is a
@@ -53,7 +53,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from omi_audio._backend import DEFAULT_SAMPLE_RATE
+from omi_audio._numbers import finite as _finite
 from omi_audio.clip import Clip
+from omi_audio.graph.core import Graph
 from omi_audio.reverb import Reverb
 from omi_audio.spatial import equal_power_pan
 
@@ -97,23 +99,6 @@ def muffle_taps(sample_rate: float,
     At least two taps, since one is not an average at all.
     """
     return max(2, int(round(sample_rate / (math.pi * max(cutoff, 1e-6)))))
-
-
-def _finite(value: float) -> float:
-    """``value`` as a float, with anything that is not a number replaced by 0.
-
-    Positions come out of a scenegraph, and a scenegraph produces non-finite
-    numbers for ordinary reasons: a transform with a zero scale, an
-    uninitialised bone, a physics step that blew up, a normalisation of a zero
-    vector.  Those become NaN gains, and a NaN multiplied into the mix stays --
-    ``np.clip`` does not remove it -- so every voice sharing the output buffer
-    goes with it.
-
-    Silence is the right substitute.  It is what the emitter would sound like if
-    it were nowhere, which is what a NaN position says it is.
-    """
-    number = float(value)
-    return number if math.isfinite(number) else 0.0
 
 
 class Voice:
@@ -208,7 +193,7 @@ class VoiceHandle:
         it for every emitter in a scene costs nothing worth measuring.
 
         This is the boundary where a gain becomes the audio thread's, so it is
-        where a non-finite one is turned into silence -- see :func:`_finite`.
+        where a non-finite one is turned into silence -- see :func:`omi_audio._numbers.finite`.
         """
         if self._live:
             self._voice.target_left = _finite(left)
@@ -303,6 +288,9 @@ class Mixer:
         #: The sound of the place the listener is in, over the whole mix. Its
         #: ``level`` starts at nought, which costs nothing per block.
         self.reverb = Reverb(self.sample_rate, self._max_block)
+        #: The processing graph, rendered into the mix after the voices; one
+        #: with no outputs costs nothing.  See :mod:`omi_audio.graph`.
+        self.graph = Graph(self.sample_rate, self._max_block)
 
     # ------------------------------------------------------------------
     # Control thread
@@ -450,6 +438,8 @@ class Mixer:
         for voice in self.voices:
             if voice.active:
                 self._mix_voice(voice, frames, out)
+        if self.graph.active:
+            self.graph.render(frames, out)
         if self.reverb.active:
             self.reverb.process(out, frames)
         if self._master_gain != 1.0:

@@ -21,9 +21,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Generator
+from typing import Any
+
+import numpy as np
 
 from omi_audio import _backend
 from omi_audio._backend import DEFAULT_SAMPLE_RATE
+from omi_audio.graph.sources import CaptureRing
 
 log = logging.getLogger(__name__)
 
@@ -189,3 +193,131 @@ def describe(device: AudioDevice | None) -> str:
         return 'audio: silent'
     return 'audio: %s %d Hz x%d' % (
         getattr(device, 'backend_name', 'device'), device.sample_rate, device.channels)
+
+
+# ----------------------------------------------------------------------
+# Capture
+# ----------------------------------------------------------------------
+
+#: What a capture device's thread is driven with: it is sent each captured
+#: chunk as bytes of 32-bit floats.
+CaptureSink = Generator[None, bytes, None]
+
+
+class CaptureDevice:
+    """An input whose samples arrive in :attr:`ring`, one channel, as they are captured.
+
+    :class:`omi_audio.graph.CaptureSource` reads the ring on the audio thread.
+    """
+
+    #: Whether nothing will ever arrive.
+    silent = False
+
+    def __init__(self, sample_rate: int = DEFAULT_SAMPLE_RATE,
+                 ring: CaptureRing | None = None) -> None:
+        self.sample_rate = int(sample_rate)
+        #: Where captured samples are written.
+        self.ring = ring if ring is not None else CaptureRing(max(2, self.sample_rate))
+
+    def start(self) -> None:
+        """Begin capturing."""
+
+    def close(self) -> None:
+        """Stop capturing and release the device.  Safe to call more than once."""
+
+
+class NullCapture(CaptureDevice):
+    """An input that never delivers anything: its ring stays empty."""
+
+    silent = True
+
+
+class MiniaudioCapture(CaptureDevice):
+    """Capture through ``miniaudio``'s ``CaptureDevice``, mixed to one channel.
+
+    ``device`` chooses among :func:`capture_devices` by name: the first whose
+    name contains it, ignoring case; empty is the system's default input.
+
+    Raises:
+        DeviceError: where the package is absent, no input matches ``device``,
+            or the input will not open.
+    """
+
+    def __init__(self, sample_rate: int = DEFAULT_SAMPLE_RATE, device: str = '',
+                 ring: CaptureRing | None = None,
+                 buffer_msec: int = DEFAULT_BUFFER_MSEC) -> None:
+        super().__init__(sample_rate=sample_rate, ring=ring)
+        backend = _backend.backend()
+        if backend is None:
+            raise DeviceError('miniaudio is not installed')
+        chosen = None
+        if device:
+            chosen = _find_capture(backend, device)
+            if chosen is None:
+                raise DeviceError('no audio input is named like %r' % (device,))
+        try:
+            self.device = backend.CaptureDevice(
+                input_format=backend.SampleFormat.FLOAT32, nchannels=1,
+                sample_rate=self.sample_rate, buffersize_msec=int(buffer_msec),
+                device_id=chosen)
+        except Exception as error:
+            raise DeviceError('cannot open an audio input: %s' % (error,)) from error
+        if str(getattr(self.device, 'backend', '')).lower() == NULL_BACKEND:
+            self.device.close()
+            raise DeviceError('no audio input hardware is available')
+        self.backend_name = str(self.device.backend)
+
+    def _sink(self) -> CaptureSink:
+        """The generator the device thread sends each captured chunk to."""
+        ring = self.ring
+        while True:
+            chunk = yield
+            ring.write(np.frombuffer(chunk, dtype=np.float32))
+
+    def start(self) -> None:
+        sink = self._sink()
+        next(sink)
+        self.device.start(sink)
+
+    def close(self) -> None:
+        device = getattr(self, 'device', None)
+        if device is not None:
+            self.device = None
+            device.close()
+
+
+def _find_capture(backend: Any, name: str) -> Any:
+    """The id of the first input whose name contains ``name``, or None."""
+    wanted = name.lower()
+    for entry in backend.Devices().get_captures():
+        if wanted in str(entry.get('name', '')).lower():
+            return entry.get('id')
+    return None
+
+
+def capture_devices() -> list[str]:
+    """The names of the audio inputs this machine has; empty where there are none."""
+    backend = _backend.backend()
+    if backend is None:
+        return []
+    try:
+        return [str(entry.get('name', '')) for entry in backend.Devices().get_captures()]
+    except Exception as error:
+        log.warning('cannot list audio inputs: %s', error, exc_info=True)
+        return []
+
+
+def open_capture(sample_rate: int = DEFAULT_SAMPLE_RATE, device: str = '',
+                 ring: CaptureRing | None = None) -> CaptureDevice:
+    """The input ``device`` names (see :class:`MiniaudioCapture`), or one that is silent.
+
+    Never raises: an input that cannot be had is reported once, in the log,
+    and a :class:`NullCapture` is returned.  The device is not started.
+    """
+    try:
+        return MiniaudioCapture(sample_rate=sample_rate, device=device, ring=ring)
+    except DeviceError as error:
+        log.warning('%s; capturing silence.', error)
+    except Exception as error:
+        log.warning('audio input failed (%s); capturing silence.', error, exc_info=True)
+    return NullCapture(sample_rate=sample_rate, ring=ring)
