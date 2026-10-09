@@ -252,6 +252,33 @@ class TestBufferSource:
         source.start()
         assert np.allclose(play_more(source, frames=2), [1.0, 2.0])
 
+    def test_start_at_an_offset_plays_from_there(self):
+        source = graph.BufferSource(np.arange(8, dtype='f'), buffer_rate=RATE)
+        source.start(offset=3.0 / RATE)
+        assert np.allclose(play(source, frames=4)[0], [3, 4, 5, 6])
+
+    def test_an_offset_counts_from_the_start_when_playing_backwards(self):
+        source = graph.BufferSource(np.arange(8, dtype='f'), buffer_rate=RATE,
+                                    playback_rate=-1.0)
+        source.start(offset=3.0 / RATE)
+        assert np.allclose(play(source, frames=5)[0], [3, 2, 1, 0, 0])
+
+    def test_an_offset_past_the_end_of_a_loop_folds_into_it(self):
+        source = graph.BufferSource([0.0, 1.0, 2.0, 3.0], buffer_rate=RATE, loop=True)
+        source.start(offset=6.0 / RATE)
+        assert np.allclose(play(source, frames=3)[0], [2, 3, 0])
+
+    def test_an_offset_past_the_end_of_a_one_shot_is_silent(self):
+        source = graph.BufferSource([1.0, 1.0], buffer_rate=RATE)
+        source.start(offset=5.0 / RATE)
+        assert not play(source, frames=3).any()
+        assert source.finished
+
+    def test_a_non_finite_offset_starts_at_the_start(self):
+        source = graph.BufferSource([1.0, 2.0], buffer_rate=RATE)
+        source.start(offset=math.nan)
+        assert np.allclose(play(source, frames=2)[0], [1.0, 2.0])
+
     def test_elapsed_is_the_playhead_in_seconds(self):
         source = graph.BufferSource(np.ones(RATE), buffer_rate=RATE)
         play(source, frames=RATE // 10, max_block=RATE)

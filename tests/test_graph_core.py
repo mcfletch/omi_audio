@@ -141,6 +141,13 @@ class TestGain:
         assert block[0] > 0.9 and block[-1] == pytest.approx(0.0)
         assert np.all(np.diff(block) < 0)
 
+    def test_a_settled_gain_is_not_ramped(self):
+        gain = graph.Gain(gain=1.0)
+        gain.connect(Constant(1.0))
+        gain.gain = 0.25
+        gain.settle()
+        assert np.allclose(rendered(gain), 0.25)
+
     def test_a_gain_that_is_not_a_number_is_silence(self):
         gain = graph.Gain(gain=float('nan'))
         gain.connect(Constant(1.0))

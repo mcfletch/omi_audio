@@ -26,7 +26,7 @@ engine.graph.add_output(graph.Gain(gain=0.3).connect(darker))
 | `Gain` | `GainNode` | its input times `gain` |
 | `Oscillator` | `OscillatorNode` | a `PeriodicWave` at `frequency` (Hz) and `detune` (cents) |
 | `PeriodicWave` | `PeriodicWave` | one cycle as Fourier coefficients; `of_type('square')` and the other standard shapes |
-| `BufferSource` | `AudioBufferSourceNode` | samples in memory: `loop`, `loop_start`/`loop_end` (s), `playback_rate`, `detune`, `duration` (s) |
+| `BufferSource` | `AudioBufferSourceNode` | samples in memory: `loop`, `loop_start`/`loop_end` (s), `playback_rate`, `detune`, `duration` (s); `start(offset)` plays from `offset` seconds in |
 | `CaptureSource` | `MediaStreamAudioSourceNode` | what a capture device writes into a `CaptureRing` |
 | `BiquadFilter` | `BiquadFilterNode` | `lowpass`, `highpass`, `bandpass`, `lowshelf`, `highshelf`, `peaking`, `notch`, `allpass` |
 | `Delay` | `DelayNode` | its input `delay_time` seconds later, up to `max_delay_time` |
@@ -42,6 +42,9 @@ engine.graph.add_output(graph.Gain(gain=0.3).connect(darker))
 Every node has `gain` (linear, ramped across a block when it changes),
 `enabled` (false passes the mixed input through unprocessed), `playing` and
 `paused` (either makes the output silent; a paused node keeps its state).
+A changed gain, delay or pair of ear gains is ramped to across the next block;
+`settle()` takes the current values as reached, for a node about to be heard
+for the first time.
 
 ## Channels
 

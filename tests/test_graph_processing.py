@@ -217,6 +217,13 @@ class TestDelay:
         result = run(node, [1.0, 2.0, 3.0, 4.0, 0, 0, 0, 0], block=8)[0]
         assert np.allclose(result, [0, 0, 0, 1, 2, 3, 4, 0])
 
+    def test_a_settled_delay_does_not_glide_there(self):
+        node = graph.Delay()
+        node.delay_time = 3.0 / RATE
+        node.settle()
+        result = run(node, [1.0, 2.0, 3.0, 4.0, 0, 0, 0, 0], block=8)[0]
+        assert np.allclose(result, [0, 0, 0, 1, 2, 3, 4, 0])
+
     def test_no_delay_is_the_input(self):
         result = run(graph.Delay(), [1.0, 2.0, 3.0])[0]
         assert np.allclose(result, [1.0, 2.0, 3.0])
@@ -576,6 +583,15 @@ class TestPanner:
         made.render(16)
         left = panner.output(16)[0]
         assert left[0] > 0.9 and left[-1] == pytest.approx(0.0)
+
+    def test_settled_gains_are_not_ramped(self):
+        panner = graph.Panner()
+        panner.set_gains(0.5, 0.25)
+        panner.propagation_delay = 4.0 / RATE
+        panner.settle()
+        result = run(panner, np.arange(1, 17, dtype='f'), block=16)
+        assert np.allclose(result[0, 4:], 0.5 * np.arange(1, 13))
+        assert np.allclose(result[1, 4:], 0.25 * np.arange(1, 13))
 
     def test_a_propagation_delay_delays(self):
         panner = graph.Panner(left=1.0, right=1.0)

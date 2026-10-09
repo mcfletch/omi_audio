@@ -202,6 +202,14 @@ class Node:
         """Frames per second of the graph this node is in."""
         return self._graph.sample_rate if self._graph is not None else DEFAULT_SAMPLE_RATE
 
+    def settle(self) -> None:
+        """Take the current parameters as reached: the next block does not ramp to them.
+
+        For a node about to be heard for the first time, which should start at
+        its parameters rather than glide there from its defaults.
+        """
+        self._gain_now = self._gain
+
     def connect(self, source: Node, channel: int | None = None) -> Node:
         """Read ``source`` (or one channel of it) as an input; returns this node."""
         self.inputs.append(Input(source, channel))

@@ -362,6 +362,10 @@ class Delay(Node):
     def delay_time(self, value: float) -> None:
         self._delay_time = finite(value)
 
+    def settle(self) -> None:
+        super().settle()
+        self._delay_now = self.delay_time
+
     @property
     def reached(self) -> float:
         """The delay the last block ended at, in seconds."""

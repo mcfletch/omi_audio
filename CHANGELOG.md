@@ -19,6 +19,10 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
 - `device.open_capture()`, `capture_devices()`, `MiniaudioCapture` and
   `NullCapture`: an audio input through miniaudio, mixed to one channel, or
   silence where there is none.
+- `graph.BufferSource.start(offset)`: play from `offset` seconds into the
+  buffer, folded into a loop.
+- `graph.Node.settle()`: a node's gain (a `Delay`'s delay, a `Panner`'s ear
+  gains and propagation delay) taken as reached, not ramped to.
 
 - A reverb over the whole mix, `Mixer.reverb` and `AudioEngine.reverb`: the
   sound of the place the listener is in, with a `level`, a `decay` in seconds

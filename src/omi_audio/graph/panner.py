@@ -52,6 +52,11 @@ class Panner(Node):
         self._left = finite(left)
         self._right = finite(right)
 
+    def settle(self) -> None:
+        super().settle()
+        self._left_now, self._right_now = self._left, self._right
+        self._delay.settle()
+
     @property
     def propagation_delay(self) -> float:
         """Seconds the sound takes to arrive; 0 for none."""

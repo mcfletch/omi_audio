@@ -301,6 +301,7 @@ class BufferSource(Node):
         #: Whether a source that is not looping has played to its end.
         self.finished = False
         self._started = False
+        self._offset: float | None = None
         self._index = np.zeros(0)
         self._wrapped = np.zeros(0)
         self._mask = np.zeros(0, dtype=bool)
@@ -338,10 +339,19 @@ class BufferSource(Node):
         """Where the playhead is, in seconds of the buffer."""
         return self.position / self.buffer_rate
 
-    def start(self) -> None:
-        """Play from the start: the end, for a negative rate."""
+    def start(self, offset: float | None = None) -> None:
+        """Play from the start: the end, for a negative rate.
+
+        ``offset``, in seconds of the buffer counted from its start, plays from
+        there instead, in either direction; a loop folds an offset past its end
+        back into the loop, and a source that does not loop and is given one
+        past its end has finished.  A negative offset is the start, and a
+        non-finite one is no offset.
+        """
         self.finished = False
         self._started = False
+        self._offset = (max(0.0, float(offset))
+                        if offset is not None and math.isfinite(offset) else None)
         self.playing = True
 
     def _end(self) -> float:
@@ -351,6 +361,15 @@ class BufferSource(Node):
         if self.duration > 0.0:
             end = min(end, self.duration * rate)
         return end
+
+    def _first(self, step: float, end: float, rate: int) -> float:
+        """Where the playhead starts: the offset :meth:`start` was given, or an end."""
+        if self._offset is None:
+            return max(end - 1.0, 0.0) if step < 0.0 else 0.0
+        position = self._offset * rate
+        if self.loop and end > 0.0:
+            return self._wrap_one(position, 1.0, end)
+        return position
 
     def _region(self, end: float) -> tuple[float, float]:
         """The loop's first frame and the frame it returns at."""
@@ -383,7 +402,7 @@ class BufferSource(Node):
         step = self.playback_rate * 2.0 ** (self.detune / 1200.0) * rate / self.sample_rate
         if not self._started:
             self._started = True
-            self.position = max(end - 1.0, 0.0) if step < 0.0 else 0.0
+            self.position = self._first(step, end, rate)
         if self.finished or end <= 0.0:
             self.finished = not self.loop
             return
