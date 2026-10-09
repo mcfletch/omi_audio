@@ -23,6 +23,8 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   buffer, folded into a loop.
 - `graph.Node.settle()`: a node's gain (a `Delay`'s delay, a `Panner`'s ear
   gains and propagation delay) taken as reached, not ramped to.
+- `synth.convolved(signal, response)`, by FFT; `synth.reverberated` uses it,
+  so a clip seconds long in a room a second long is made in milliseconds.
 
 - A reverb over the whole mix, `Mixer.reverb` and `AudioEngine.reverb`: the
   sound of the place the listener is in, with a `level`, a `decay` in seconds

@@ -312,6 +312,20 @@ class TestReverberation:
         freqs = np.fft.rfftfreq(len(part), 1.0 / clip.sample_rate)
         return float((freqs * spectrum).sum() / max(spectrum.sum(), 1e-20))
 
+    def test_the_tail_is_the_clip_convolved_with_the_room(self):
+        rng = np.random.default_rng(4)
+        dry, room = rng.uniform(-1, 1, 300), rng.uniform(-1, 1, 77)
+        assert np.allclose(synth.convolved(dry, room), np.convolve(dry, room), atol=1e-9)
+
+    def test_nothing_convolved_is_nothing(self):
+        assert synth.convolved(np.zeros(0), np.ones(4)).shape == (0,)
+
+    def test_a_long_sound_in_a_long_room(self):
+        """Seconds of each: the convolution is by transform, not sample by sample."""
+        dry = synth.rumble(2.0, sample_rate=44100, seed=3)
+        wet = synth.reverberated(dry, seconds=1.0, level=0.5, seed=2)
+        assert wet.frames == dry.frames + 44100 - 1
+
     def test_the_sound_goes_on_after_it_has_stopped(self):
         wet = synth.reverberated(self.burst(), seconds=0.6, level=0.7, seed=2)
         assert self.level(wet, 0.3) > self.level(wet, 0.02) * 0.02
