@@ -37,7 +37,7 @@ engine.graph.add_output(graph.Gain(gain=0.3).connect(darker))
 | `ChannelSplitter` | `ChannelSplitterNode` | its channels kept apart, for `connect(splitter, channel=n)` |
 | `ChannelSelector` | (X3D) | one channel of its input, as mono |
 | `ChannelMerger` | `ChannelMergerNode` | one channel per input, in connection order |
-| `Panner` | `PannerNode` | mono placed by two ear gains the control thread works out, and an optional propagation delay |
+| `Panner` | `PannerNode` | mono placed by two ear gains the control thread works out, an optional propagation delay, and an optional spherical head (`set_head`, `spatial.head_response`): the far ear's delay and each ear's shadow |
 
 Every node has `gain` (linear, ramped across a block when it changes),
 `enabled` (false passes the mixed input through unprocessed), `playing` and

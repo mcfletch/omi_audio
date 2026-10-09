@@ -6,9 +6,11 @@ import math
 import numpy as np
 import pytest
 
-from omi_audio import graph
+from omi_audio import graph, spatial
 from omi_audio.graph import convolver as convolution
 from omi_audio.graph import dynamics
+from omi_audio.graph.panner import HeadShadow
+from omi_audio.spatial import HEAD_RADIUS, SPEED_OF_SOUND
 
 from support import RATE, needs_tracemalloc, tracemalloc
 
@@ -648,3 +650,52 @@ def test_processing_allocates_nothing_measurable():
     tracemalloc.stop()
     grew = sum(entry.size_diff for entry in after.compare_to(before, 'filename'))
     assert grew < 4096, 'rendering allocated %d bytes' % (grew,)
+
+
+class TestHeadPanning:
+    """A Panner given a head response: the far ear later and its highs shadowed"""
+
+    def test_the_far_ear_hears_later(self):
+        panner = graph.Panner(left=1.0, right=1.0)
+        panner.set_head(spatial.head_response(math.pi / 2))
+        panner.settle()
+        click = np.zeros(512)
+        click[100] = 1.0
+        result = run(panner, click, block=128)
+        late = spatial.head_response(math.pi / 2).left_delay * RATE
+        assert int(np.argmax(np.abs(result[1]))) == 100
+        assert int(np.argmax(np.abs(result[0]))) == pytest.approx(100 + late, abs=1.5)
+
+    def test_the_far_ears_highs_are_shadowed(self):
+        panner = graph.Panner(left=1.0, right=1.0)
+        panner.set_head(spatial.head_response(math.pi / 2))
+        panner.settle()
+        high = np.sin(2 * np.pi * (RATE * 0.45) * np.arange(4096) / RATE)
+        result = run(panner, high)[:, 1024:]
+        assert np.abs(result[1]).max() > 1.5
+        assert np.abs(result[0]).max() < 0.6
+
+    def test_low_frequencies_pass_both_ears(self):
+        panner = graph.Panner(left=1.0, right=1.0)
+        panner.set_head(spatial.head_response(math.pi / 2))
+        panner.settle()
+        result = run(panner, np.ones(2048))[:, 1024:]
+        assert np.allclose(result, 1.0, atol=0.02)
+
+    def test_no_head_is_the_gains_alone(self):
+        panner = graph.Panner(left=0.5, right=0.25)
+        panner.set_head(None)
+        result = run(panner, np.ones(16))
+        assert np.allclose(result[0], 0.5) and np.allclose(result[1], 0.25)
+
+    @pytest.mark.parametrize('rate', [8000, 48000])
+    def test_the_shadow_is_its_difference_equation(self, rate):
+        signal = np.random.default_rng(3).standard_normal(700).astype('f')
+        shelf, found = HeadShadow(), np.zeros(700, 'f')
+        for at in range(0, 700, 300):
+            shelf.run(signal[at:at + 300], 0.3, HEAD_RADIUS, rate, found[at:at + 300])
+        twice, turn = 2.0 * rate, 2.0 * SPEED_OF_SOUND / HEAD_RADIUS
+        b0 = (0.3 * twice + turn) / (twice + turn)
+        b1 = (turn - 0.3 * twice) / (twice + turn)
+        a1 = (turn - twice) / (twice + turn)
+        assert np.allclose(found, direct_form((b0, b1, 0.0, a1, 0.0), signal), atol=1e-5)
