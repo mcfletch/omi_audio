@@ -20,6 +20,7 @@ from collections.abc import Callable
 from typing import cast
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 from omi_audio.clip import DEFAULT_SAMPLE_RATE, Clip
 
@@ -204,6 +205,22 @@ def rumble(duration: float, sample_rate: int = DEFAULT_SAMPLE_RATE,
 _TAIL_BANDS = ((500.0, 1.9), (3500.0, 1.0), (None, 2.8))
 
 
+def convolved(signal: ArrayLike, response: ArrayLike) -> NDArray[np.float64]:
+    """``signal`` convolved with ``response``: ``len(signal) + len(response) - 1`` samples.
+
+    By transform, so seconds of each take milliseconds rather than the
+    product of their lengths.
+    """
+    first = np.asarray(signal, dtype=np.float64).reshape(-1)
+    second = np.asarray(response, dtype=np.float64).reshape(-1)
+    if not first.size or not second.size:
+        return np.zeros(0)
+    size = first.size + second.size - 1
+    length = 1 << (size - 1).bit_length()
+    product = np.fft.rfft(first, length) * np.fft.rfft(second, length)
+    return np.fft.irfft(product, length)[:size]
+
+
 def reverberated(clip: Clip, seconds: float = 0.6, level: float = 0.5,
                  seed: int | None = None) -> Clip:
     """``clip`` with the tail of a room behind it, baked in.
@@ -229,7 +246,7 @@ def reverberated(clip: Clip, seconds: float = 0.6, level: float = 0.5,
         return clip
     frames = max(1, int(float(seconds) * clip.sample_rate))
     tail = _tail(frames, clip.sample_rate, float(seconds), seed)
-    wet = np.convolve(np.asarray(clip.samples, dtype=np.float64), tail)
+    wet = convolved(np.asarray(clip.samples, dtype=np.float64), tail)
     peak = float(np.abs(wet).max())
     if peak > 0.0:
         wet *= float(np.abs(clip.samples).max()) / peak

@@ -50,6 +50,8 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 
+from omi_audio._numbers import finite as _finite
+
 __all__ = ['Reverb', 'ALLPASS_DELAYS', 'ALLPASS_GAIN', 'COMB_DELAYS', 'SILENT',
            'SPREAD', 'feedback_for', 'prime_delays']
 
@@ -314,8 +316,3 @@ def _put(line: NDArray[np.float32], start: int, samples: NDArray[np.float32],
     if first < count:
         line[:count - first] = samples[first:]
 
-
-def _finite(value: float) -> float:
-    """``value`` as a float, or nought where it is not a finite number."""
-    number = float(value)
-    return number if math.isfinite(number) else 0.0

@@ -160,16 +160,26 @@ chosen here.
 
 ### What the output does not do
 
-**The output is stereo, and elevation is not represented.** A pair of ear gains
-has one degree of freedom and the azimuth spends it, so a sound directly
-overhead and one dead ahead are indistinguishable. `azimuth_elevation()` returns
-the elevation, and an application is free to use it — to duck a sound that is
-above the listener, or to drive a filter of its own — but nothing in this library
-consumes it.
+**The output is stereo.** A pair of ear gains has one degree of freedom and the
+azimuth spends it, so with equal-power panning a sound directly overhead and one
+dead ahead are indistinguishable. `azimuth_elevation()` returns the elevation,
+and an application is free to use it — to duck a sound that is above the
+listener, or to drive a filter of its own. Surround needs more than two
+channels, which is not implemented.
 
-Stereo headphones are what `omi_audio` aims at. Height needs an HRTF and
-surround needs more than two channels; neither is implemented, and both would be
-a new renderer rather than a change to `equal_power_pan`.
+### A spherical head
+
+`head_response(azimuth, elevation, head_radius)` is how a spherical head hears a
+sound: the far ear hears it later by Woodworth's interaural delay,
+`(a / c)(θ + sin θ)` for a sound `θ` toward the near ear, and each ear hears it
+through a first-order shelf, 1 at low frequencies and a high-frequency gain from
+2 facing the sound to 0.1 at 150° from it (Brown and Duda's head-shadow model),
+turning over at `c / a` radians a second. `a` is `HEAD_RADIUS`, 8.75 cm, and
+`c` `SPEED_OF_SOUND`, 343 m/s. A graph `Panner` given one with `set_head()`
+applies it to each ear before the ear gains; this is the Web Audio panner's
+`HRTF` model, made from the geometry of a head rather than from measured
+responses, so it carries the delay and the shadow and not the pinnae's cues
+for front, back and height.
 
 ## The listener
 

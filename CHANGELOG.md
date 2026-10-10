@@ -9,6 +9,23 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
 
 ### Added
 
+- `omi_audio.graph`, an audio processing graph on the Web Audio API's model,
+  rendered by every `Mixer` as `mixer.graph` (`AudioEngine.graph`): `Gain`,
+  `Oscillator` with `PeriodicWave`, `BufferSource`, `CaptureSource`,
+  `BiquadFilter`, `Delay`, `WaveShaper`, `DynamicsCompressor`, `Convolver`,
+  `Analyser`, `ChannelSplitter`, `ChannelSelector`, `ChannelMerger` and
+  `Panner`, with Web Audio's channel counting and up- and down-mixing. It
+  allocates nothing on the audio thread. See `docs/GRAPH.md`.
+- `device.open_capture()`, `capture_devices()`, `MiniaudioCapture` and
+  `NullCapture`: an audio input through miniaudio, mixed to one channel, or
+  silence where there is none.
+- `graph.BufferSource.start(offset)`: play from `offset` seconds into the
+  buffer, folded into a loop.
+- `graph.Node.settle()`: a node's gain (a `Delay`'s delay, a `Panner`'s ear
+  gains and propagation delay) taken as reached, not ramped to.
+- `synth.convolved(signal, response)`, by FFT; `synth.reverberated` uses it,
+  so a clip seconds long in a room a second long is made in milliseconds.
+
 - A reverb over the whole mix, `Mixer.reverb` and `AudioEngine.reverb`: the
   sound of the place the listener is in, with a `level`, a `decay` in seconds
   and a `damping`. It is Schroeder's arrangement, four feedback combs per ear

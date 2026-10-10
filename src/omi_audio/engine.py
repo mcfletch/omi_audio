@@ -40,6 +40,7 @@ import numpy as np
 from omi_audio import model
 from omi_audio.clip import Clip, ClipCache
 from omi_audio.device import AudioDevice, open_device
+from omi_audio.graph.core import Graph
 from omi_audio.library import AudioLibrary, Fetch
 from omi_audio.mixer import DEFAULT_VOICES, Mixer, VoiceHandle
 from omi_audio.reverb import Reverb
@@ -152,6 +153,11 @@ class AudioEngine:
         in; see :mod:`omi_audio.reverb`.
         """
         return self.mixer.reverb
+
+    @property
+    def graph(self) -> Graph:
+        """The processing graph mixed with the voices; see :mod:`omi_audio.graph`."""
+        return self.mixer.graph
 
     def listen(self, platform: ViewPlatform) -> Listener:
         """Move the listener to a view platform's pose, and return it.

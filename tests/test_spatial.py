@@ -379,3 +379,34 @@ class TestEqualPowerPan:
         front = spatial.equal_power_pan(math.pi / 4)
         behind = spatial.equal_power_pan(math.pi * 3 / 4)
         assert behind == pytest.approx(front)
+
+
+class TestHeadResponse:
+    """The spherical head: the far ear's delay and each ear's head shadow (HRTF panning)"""
+
+    def test_a_sound_ahead_reaches_both_ears_alike(self):
+        found = spatial.head_response(0.0)
+        assert found.left_delay == found.right_delay == 0.0
+        assert found.left_shadow == pytest.approx(found.right_shadow)
+
+    def test_a_sound_to_the_right_reaches_the_left_ear_later(self):
+        found = spatial.head_response(math.pi / 2)
+        assert found.right_delay == 0.0
+        # Woodworth's (a / c)(theta + sin theta) at a quarter turn
+        assert found.left_delay == pytest.approx(
+            spatial.HEAD_RADIUS / spatial.SPEED_OF_SOUND * (math.pi / 2 + 1.0))
+
+    def test_the_near_ear_is_bright_and_the_far_ear_shadowed(self):
+        found = spatial.head_response(math.pi / 2)
+        assert found.right_shadow == pytest.approx(2.0)
+        assert found.left_shadow < 0.5
+
+    def test_overhead_is_ahead_in_the_ears(self):
+        found = spatial.head_response(math.pi / 2, elevation=math.pi / 2)
+        assert found.left_delay == pytest.approx(0.0, abs=1e-12)
+        assert found.left_shadow == pytest.approx(found.right_shadow)
+
+    def test_a_bigger_head_takes_longer(self):
+        small = spatial.head_response(-math.pi / 2, head_radius=0.05)
+        large = spatial.head_response(-math.pi / 2, head_radius=0.1)
+        assert large.right_delay == pytest.approx(2 * small.right_delay)

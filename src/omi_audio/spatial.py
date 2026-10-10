@@ -22,7 +22,10 @@ how a sound fades with distance and neither can express the other:
 Panning is shared: :meth:`Listener.azimuth_elevation` puts the source in the
 listener's own frame and :func:`equal_power_pan` turns the azimuth into a pair
 of ear gains.  **The output is stereo, and only the azimuth reaches it** -- see
-:func:`equal_power_pan` for what that costs.
+:func:`equal_power_pan` for what that costs.  :func:`head_response` is the
+head-related alternative a :class:`~omi_audio.graph.Panner` applies: a
+spherical head's delay to the far ear and the shadow it casts on each ear,
+from the direction in azimuth and elevation.
 
 References:
     ``KHR_audio_emitter``
@@ -33,6 +36,11 @@ References:
 
     ISO/IEC 14772-1:1997 (VRML97) 6.42 ``Sound``
     https://www.web3d.org/documents/specifications/14772/V2.0/part1/nodesRef.html#Sound
+
+    C. P. Brown and R. O. Duda, "A Structural Model for Binaural Sound
+    Synthesis", IEEE Transactions on Speech and Audio Processing 6(5), 1998
+    (the spherical head's shadow filter); R. S. Woodworth, *Experimental
+    Psychology*, 1938 (its interaural delay)
 """
 
 from __future__ import annotations
@@ -311,6 +319,60 @@ def equal_power_pan(azimuth: float) -> tuple[float, float]:
         azimuth = math.pi - azimuth
     across = (azimuth + math.pi / 2) / math.pi
     return math.cos(across * math.pi / 2), math.sin(across * math.pi / 2)
+
+
+#: Metres a second, in air at about 20 degrees Celsius.
+SPEED_OF_SOUND = 343.0
+#: The spherical head's radius in metres, an adult's average.
+HEAD_RADIUS = 0.0875
+#: The head shadow's least high-frequency gain, at :data:`SHADOW_ANGLE` from
+#: the ear, and that angle in radians (Brown and Duda's 0.1 and 150 degrees).
+SHADOW_LEAST = 0.1
+SHADOW_ANGLE = math.radians(150.0)
+
+
+@dataclass(frozen=True)
+class HeadResponse:
+    """How a spherical head hears a sound from one direction.
+
+    Each ear's delay in seconds, the far ear's being the interaural time
+    difference and the near ear's 0, and each ear's shadow: the gain of its
+    first-order shelf at high frequencies, 1 at low ones (2 facing the sound,
+    :data:`SHADOW_LEAST` deep in the head's shadow).  ``head_radius`` sets
+    where the shelf turns over, at ``SPEED_OF_SOUND / head_radius`` radians a
+    second.
+    """
+
+    left_delay: float
+    right_delay: float
+    left_shadow: float
+    right_shadow: float
+    head_radius: float = HEAD_RADIUS
+
+
+def head_shadow(angle: float) -> float:
+    """The high-frequency gain of an ear ``angle`` radians from the sound's direction"""
+    return ((1.0 + SHADOW_LEAST / 2.0)
+            + (1.0 - SHADOW_LEAST / 2.0) * math.cos(angle / SHADOW_ANGLE * math.pi))
+
+
+def head_response(azimuth: float, elevation: float = 0.0,
+                  head_radius: float = HEAD_RADIUS) -> HeadResponse:
+    """A spherical head's response to a sound ``azimuth`` radians to the right
+    and ``elevation`` up.
+
+    The sound is ``asin(sin(azimuth) cos(elevation))`` toward one ear; the far
+    ear hears it Woodworth's ``(a / c)(theta + sin theta)`` later, and each
+    ear's shadow follows its angle to the sound (:func:`head_shadow`).
+    """
+    across = math.sin(azimuth) * math.cos(elevation)
+    across = max(-1.0, min(1.0, across))
+    lateral = math.asin(across)
+    late = head_radius / SPEED_OF_SOUND * (abs(lateral) + math.sin(abs(lateral)))
+    right = head_shadow(math.acos(across))
+    left = head_shadow(math.acos(-across))
+    return HeadResponse(late if lateral > 0.0 else 0.0, late if lateral < 0.0 else 0.0,
+                        left, right, head_radius)
 
 
 @dataclass(frozen=True)
