@@ -46,6 +46,42 @@ A changed gain, delay or pair of ear gains is ramped to across the next block;
 `settle()` takes the current values as reached, for a node about to be heard
 for the first time.
 
+## What is rendered
+
+Each block, a graph renders only the nodes something is heard through. A node
+whose output is silent whatever it is given - not `playing`, `paused`, or at a
+`gain` of nought it has finished ramping to, and for a `Panner` both ear gains
+at nought - does not read its inputs, and a node only such nodes read is not
+rendered. `Graph.rendered` is how many nodes the last block rendered.
+
+When a node is rendered again, `Node.resume(missed)` is called with the frames
+that went by:
+
+- an `Oscillator` and a `BufferSource` move on by that much, so they are where
+  they would have been; a buffer that ran out meanwhile has `finished`;
+- a `CaptureSource` drops what arrived;
+- a `BiquadFilter`, `Delay`, `WaveShaper`, `Convolver`, `DynamicsCompressor`
+  and `Panner` start from silence, so nothing from before is heard.
+
+A stopped or paused node misses nothing: it carries on from where it stopped.
+A node that is not `enabled` passes its input, so it always reads it.
+
+An `Analyser` whose data was read within the last second is rendered though
+nothing is heard through it, so a meter on a muted sound moves. A node class
+sets `observed` true (or makes it a property) to be rendered regardless.
+
+## Cost
+
+At 44.1 kHz and blocks of 512 frames a node renders a block in 2 to 55
+microseconds: about 3 for a `Gain` or a `Panner`, 11 to 19 for an
+`Oscillator`, `BufferSource`, `Delay`, `DynamicsCompressor` or `BiquadFilter`,
+25 to 35 for an oversampled `WaveShaper` or a `Convolver`, and 55 for a
+`Panner` with a head and a propagation delay. Most of that is fixed for each
+block, so a block four times as long costs about twice as much.
+`tests/test_graph_cost.py` holds each node to a hundredth of the time a
+512-frame block plays for. Setting a `BiquadFilter`'s frequency, `q`, detune
+or gain redesigns it in about 30 microseconds.
+
 ## Channels
 
 A node's input is the sum of everything connected to it, mixed to one channel

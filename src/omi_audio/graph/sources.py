@@ -224,6 +224,11 @@ class Oscillator(Node):
     def output_channels(self, _computed: int) -> int:
         return 1
 
+    def resume(self, missed: int) -> None:
+        """The phase ``missed`` frames on, at the pitch as it now is."""
+        self._increment = self.pitch / self.sample_rate
+        self._phase = math.fmod(self._phase + missed * self._increment, 1.0) % 1.0
+
     def process(self, _block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
         start = self._increment
@@ -393,13 +398,33 @@ class BufferSource(Node):
     def output_channels(self, _computed: int) -> int:
         return int(self._buffer[0].shape[0])
 
+    def _step(self) -> float:
+        """Frames of the buffer the playhead moves each frame rendered."""
+        return (self.playback_rate * 2.0 ** (self.detune / 1200.0)
+                * self.buffer_rate / self.sample_rate)
+
+    def resume(self, missed: int) -> None:
+        """The playhead ``missed`` frames on: round the loop, or finished past the end."""
+        if not self._started or self.finished:
+            return
+        end = self._end()
+        if end <= 0.0:
+            return
+        step = self._step()
+        position = self.position + step * missed
+        if self.loop:
+            self.position = self._wrap_one(position, step, end)
+        else:
+            self.position = position
+            self.finished = not 0.0 <= position < end
+
     def process(self, _block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
         data, rate = self._buffer
         channels = data.shape[0]
         out[:channels, :frames] = 0.0
         end = self._end()
-        step = self.playback_rate * 2.0 ** (self.detune / 1200.0) * rate / self.sample_rate
+        step = self._step()
         if not self._started:
             self._started = True
             self.position = self._first(step, end, rate)
@@ -517,6 +542,10 @@ class CaptureRing:
         self._read += count
         return count
 
+    def skip(self) -> None:
+        """Pass over everything waiting.  The reader's call."""
+        self._read = self._written
+
 
 class CaptureSource(Node):
     """What a capture device delivers, as one channel; silence when nothing has arrived."""
@@ -528,6 +557,10 @@ class CaptureSource(Node):
 
     def output_channels(self, _computed: int) -> int:
         return 1
+
+    def resume(self, _missed: int) -> None:
+        """What arrived while nothing was heard is dropped: the input is live."""
+        self.ring.skip()
 
     def process(self, _block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:

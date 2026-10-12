@@ -16,6 +16,18 @@ follows [semantic versioning](https://semver.org/) — with the usual caveat tha
   `Analyser`, `ChannelSplitter`, `ChannelSelector`, `ChannelMerger` and
   `Panner`, with Web Audio's channel counting and up- and down-mixing. It
   allocates nothing on the audio thread. See `docs/GRAPH.md`.
+- A graph renders only the nodes something is heard through: a node that is
+  not playing, is paused, or is at a gain of nought (a `Panner`, both ear
+  gains) does not read its inputs, and what only such nodes read is not
+  rendered. `Node.listening()`, `Node.silent()`, `Node.resume(missed)`,
+  `Node.observed`, `Graph.rendered` and `Graph.clock`. A source resumed is
+  where it would have been; a filter, delay, convolver, compressor or panner
+  resumed starts from silence. See "What is rendered" in `docs/GRAPH.md`.
+- A `BiquadFilter` is redesigned in about 30 microseconds, a `WaveShaper`
+  oversamples with one sum of products for each direction, and a `Panner`'s
+  head shadows work in buffers made when it joins a graph;
+  `tests/test_graph_cost.py` holds each node to a hundredth of the time a
+  512-frame block plays for.
 - `device.open_capture()`, `capture_devices()`, `MiniaudioCapture` and
   `NullCapture`: an audio input through miniaudio, mixed to one channel, or
   silence where there is none.

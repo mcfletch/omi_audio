@@ -9,6 +9,7 @@ import pytest
 from omi_audio import graph, spatial
 from omi_audio.graph import convolver as convolution
 from omi_audio.graph import dynamics
+from omi_audio.graph.filters import LONGEST_STRETCH
 from omi_audio.graph.panner import HeadShadow
 from omi_audio.spatial import HEAD_RADIUS, SPEED_OF_SOUND
 
@@ -688,7 +689,9 @@ class TestHeadPanning:
         result = run(panner, np.ones(16))
         assert np.allclose(result[0], 0.5) and np.allclose(result[1], 0.25)
 
-    @pytest.mark.parametrize('rate', [8000, 48000])
+    # 2000 Hz puts the shelf's pole below nought, and the speed of sound over
+    # the head's radius puts it at nought.
+    @pytest.mark.parametrize('rate', [2000, SPEED_OF_SOUND / HEAD_RADIUS, 8000, 48000])
     def test_the_shadow_is_its_difference_equation(self, rate):
         signal = np.random.default_rng(3).standard_normal(700).astype('f')
         shelf, found = HeadShadow(), np.zeros(700, 'f')
@@ -699,3 +702,76 @@ class TestHeadPanning:
         b1 = (turn - 0.3 * twice) / (twice + turn)
         a1 = (turn - twice) / (twice + turn)
         assert np.allclose(found, direct_form((b0, b1, 0.0, a1, 0.0), signal), atol=1e-5)
+
+
+class TestHeadShadowBuffers:
+    def test_no_samples_leave_the_shadow_as_it_was(self):
+        shelf = HeadShadow()
+        shelf.run(np.ones(8, 'f'), 0.3, HEAD_RADIUS, RATE, np.zeros(8, 'f'))
+        before = (shelf.x1, shelf.y1)
+        shelf.run(np.zeros(0, 'f'), 0.3, HEAD_RADIUS, RATE, np.zeros(0, 'f'))
+        assert (shelf.x1, shelf.y1) == before
+
+    def test_a_signal_may_be_shadowed_in_place(self):
+        signal = noise(300)
+        apart, shared = np.zeros(300, 'f'), signal.copy()
+        HeadShadow().run(signal, 0.4, HEAD_RADIUS, RATE, apart)
+        HeadShadow().run(shared, 0.4, HEAD_RADIUS, RATE, shared)
+        assert np.array_equal(apart, shared)
+
+    @pytest.mark.parametrize('before', [True, False])
+    def test_a_head_is_heard_through_whenever_it_is_given(self, before):
+        """Given before the panner joins a graph, or after."""
+        panner = graph.Panner(left=1.0, right=1.0)
+        source = Signal(np.ones(512))
+        panner.connect(source)
+        made = graph.Graph(RATE, max_block=256)
+        if before:
+            panner.set_head(spatial.head_response(math.pi / 2))
+        made.add_output(panner)
+        if not before:
+            panner.set_head(spatial.head_response(math.pi / 2))
+        panner.settle()
+        made.render(256)
+        heard = panner.output(256)
+        assert not np.allclose(heard[0], heard[1], atol=0.05)
+
+
+class TestBiquadPoles:
+    def test_two_real_poles_filter_as_the_difference_equation_does(self):
+        node = graph.BiquadFilter('bandpass', frequency=400.0, q=0.1)
+        samples = noise(600)
+        coefficients = graph.biquad_coefficients('bandpass', 400.0, RATE, q=0.1)
+        assert coefficients[3] ** 2 > 4.0 * coefficients[4]
+        assert np.allclose(run(node, samples)[0], direct_form(coefficients, samples), atol=1e-5)
+
+    def test_a_block_longer_than_the_tables_is_filtered_in_stretches(self):
+        node = graph.BiquadFilter('lowpass', frequency=300.0, q=6.0)
+        samples = noise(3 * LONGEST_STRETCH)
+        coefficients = graph.biquad_coefficients('lowpass', 300.0, RATE, q=6.0)
+        found = run(node, samples, block=3 * LONGEST_STRETCH, max_block=4 * LONGEST_STRETCH)
+        assert np.allclose(found[0], direct_form(coefficients, samples), atol=1e-4)
+
+    def test_a_low_pass_at_nyquist_passes_its_input(self):
+        """Its poles are at nought, so there is no recursion."""
+        samples = noise(300)
+        node = graph.BiquadFilter('lowpass', frequency=RATE / 2.0)
+        assert np.allclose(run(node, samples)[0], samples)
+
+    def test_a_filter_set_before_it_joins_a_graph_is_designed_when_it_does(self):
+        node = graph.BiquadFilter('lowpass', frequency=5000.0)
+        node.frequency = 300.0
+        samples = noise(256)
+        coefficients = graph.biquad_coefficients('lowpass', 300.0, RATE)
+        assert np.allclose(run(node, samples)[0], direct_form(coefficients, samples), atol=1e-5)
+
+
+def test_a_wave_shaper_may_change_its_oversampling_while_it_plays():
+    node = graph.WaveShaper(curve=[-1.0, 0.0, 1.0])
+    made = graph.Graph(RATE, max_block=256)
+    made.add_output(node.connect(Signal(np.full(1024, 0.5))))
+    made.render(256)
+    node.oversample = '4x'
+    for _ in range(2):
+        made.render(256)
+    assert np.allclose(node.output(256), 0.5, atol=0.01)

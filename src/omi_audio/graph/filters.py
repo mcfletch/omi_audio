@@ -29,12 +29,13 @@ import math
 from typing import Any, NamedTuple
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from numpy.typing import ArrayLike, NDArray
 
 from omi_audio._numbers import finite
 from omi_audio.graph.core import Graph, Node
 
-__all__ = ['FILTER_TYPES', 'OVERSAMPLING', 'BiquadFilter', 'Delay', 'WaveShaper',
+__all__ = ['FILTER_TYPES', 'LONGEST_STRETCH', 'OVERSAMPLING', 'BiquadFilter', 'Delay', 'WaveShaper',
            'biquad_coefficients']
 
 #: The biquad's responses, as the Web Audio API names them.
@@ -46,6 +47,11 @@ OVERSAMPLING = ('none', '2x', '4x')
 
 #: The largest ``p^-m`` a stretch of the recursion may reach.
 _REACH = 300.0
+
+#: The longest stretch a pole's powers are tabled for, in frames.  A block
+#: longer than this is filtered in several stretches; a table this long costs
+#: a redesign tens of microseconds, so a frequency swept every frame is cheap.
+LONGEST_STRETCH = 512
 
 
 def biquad_coefficients(kind: str, frequency: float, sample_rate: float,
@@ -129,23 +135,33 @@ class _Pole(NamedTuple):
 
 
 def _pole(pole: complex, longest: int) -> _Pole:
-    """``pole`` with its powers over a stretch whose ``p^-m`` stays below 1e130."""
+    """``pole`` with its powers over a stretch whose ``p^-m`` stays below 1e130.
+
+    The powers are made from the pole's size and angle, ``|p|^n`` and
+    ``n * arg(p)``, which costs a few real operations on the stretch where
+    raising a complex number to each power costs a complex logarithm apiece.
+    """
+    pole = complex(pole)
     size = abs(pole)
-    if size == 0.0:
-        stretch = longest
-    elif size >= 1.0:
+    if size == 0.0 or size >= 1.0:
         stretch = longest
     else:
         stretch = max(1, min(longest, int(_REACH / -math.log(size))))
-    steps = np.arange(stretch, dtype='d')
     if size == 0.0:
         forward = np.zeros(stretch, dtype=complex)
         forward[0] = 1.0
-        inverse = forward.copy()
-    else:
-        forward = np.power(complex(pole), steps)
-        inverse = np.power(1.0 / complex(pole), steps)
-    return _Pole(complex(pole), inverse, forward, forward * pole)
+        return _Pole(pole, forward.copy(), forward, forward * pole)
+    steps = np.arange(stretch, dtype='d')
+    turn = steps * cmath.phase(pole)
+    forward = np.empty(stretch, dtype=complex)
+    inverse = np.empty(stretch, dtype=complex)
+    np.cos(turn, out=forward.real)
+    np.sin(turn, out=forward.imag)
+    np.conjugate(forward, out=inverse)
+    grown = np.exp(steps * math.log(size))
+    forward *= grown
+    inverse /= grown
+    return _Pole(pole, inverse, forward, forward * pole)
 
 
 class _Design(NamedTuple):
@@ -256,9 +272,15 @@ class BiquadFilter(Node):
             return
         b0, b1, b2, a1, a2 = self.coefficients()
         root = cmath.sqrt(a1 * a1 - 4.0 * a2)
-        longest = self._graph.max_block
-        self._design = _Design(b0, b1, b2, _pole((-a1 + root) / 2.0, longest),
-                               _pole((-a1 - root) / 2.0, longest))
+        longest = min(self._graph.max_block, LONGEST_STRETCH)
+        first = _pole((-a1 + root) / 2.0, longest)
+        if root.imag:
+            # The poles are a conjugate pair, and so are their powers.
+            second = _Pole(first.pole.conjugate(), first.inverse.conj(),
+                           first.forward.conj(), first.onward.conj())
+        else:
+            second = _pole((-a1 - root) / 2.0, longest)
+        self._design = _Design(b0, b1, b2, first, second)
 
     def prepare(self, graph: Graph) -> None:
         size = graph.max_block
@@ -270,6 +292,10 @@ class BiquadFilter(Node):
         self._scratch = np.zeros(size, dtype=complex)
         self._carry = np.zeros(size, dtype=complex)
         self._redesign()
+
+    def resume(self, _missed: int) -> None:
+        """Start from silence: no input or output remembered."""
+        self._state.fill(0.0)
 
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
@@ -398,6 +424,11 @@ class Delay(Node):
         self._scratch = np.zeros(size, dtype=np.float32)
         self._allocate(graph)
 
+    def resume(self, _missed: int) -> None:
+        """Empty the line of the channels in use, and take the delay as reached."""
+        self._line[:self.channels].fill(0.0)
+        self._delay_now = self.delay_time
+
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
         line = self._line
@@ -415,10 +446,15 @@ class Delay(Node):
         read += start
         np.mod(read, length, out=read)
         first = min(frames, length - start)
+        undelayed = delay_start == 0.0 and delay_end == 0.0
         for channel in range(block.shape[0]):
             row = line[channel]
             row[start:start + first] = block[channel, :first]
             row[:frames - first] = block[channel, first:]
+            if undelayed:
+                # The line is still written, for the delay to glide from.
+                np.copyto(out[channel, :frames], block[channel])
+                continue
             positions = self._positions[:frames]
             np.copyto(positions, read)
             _read_line(row, positions, self._lower[:frames], self._fraction[:frames],
@@ -493,6 +529,10 @@ class WaveShaper(Node):
         self._down = np.zeros((1, 0))
         self._wide = np.zeros(0)
         self._narrow = np.zeros(0)
+        self._narrow_runs = np.zeros((0, _TAPS_PER_PHASE))
+        self._wide_runs = np.zeros((0, 1))
+        self._up_taps = np.ones((1, _TAPS_PER_PHASE))
+        self._down_taps = np.ones(1)
         self._product = np.zeros(0)
         self._index = np.zeros(0)
         self._lower = np.zeros(0, dtype=np.intp)
@@ -530,6 +570,17 @@ class WaveShaper(Node):
         self._down = np.zeros((graph.max_channels, taps - 1))
         self._wide = np.zeros(taps - 1 + wide)
         self._narrow = np.zeros(_TAPS_PER_PHASE - 1 + graph.max_block)
+        # Every run of taps in each buffer, as rows: a filter's output is
+        # those rows times its taps.  Each phase of the up-sampled signal is
+        # the input filtered by every factor-th tap from that phase, which is
+        # zero-stuffing without the zeros; the low-passed signal is wanted
+        # only at every factor-th sample, so only those rows are taken.
+        if factor > 1:
+            self._narrow_runs = sliding_window_view(self._narrow, _TAPS_PER_PHASE)
+            self._wide_runs = sliding_window_view(self._wide, taps)[::factor]
+            self._up_taps = np.ascontiguousarray(
+                self._kernel.reshape(_TAPS_PER_PHASE, factor).T[:, ::-1] * factor)
+            self._down_taps = np.ascontiguousarray(self._kernel[::-1])
         self._product = np.zeros(max(wide, graph.max_block))
         self._index = np.zeros(wide)
         self._lower = np.zeros(wide, dtype=np.intp)
@@ -539,6 +590,11 @@ class WaveShaper(Node):
 
     def prepare(self, graph: Graph) -> None:
         self._allocate(graph)
+
+    def resume(self, _missed: int) -> None:
+        """Empty the resampling filters' histories."""
+        self._up.fill(0.0)
+        self._down.fill(0.0)
 
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
@@ -571,27 +627,14 @@ class WaveShaper(Node):
         wide = self._wide[:taps - 1 + frames * factor]
         wide[:taps - 1] = self._down[channel]
         shaped = wide[taps - 1:]
-        shaped.fill(0.0)
-        product = self._product[:frames]
-        # Each phase j of the up-sampled signal is the input filtered by every
-        # factor-th tap from j: zero-stuffing without the zeros.
-        for phase in range(factor):
-            lane = shaped[phase::factor]
-            for tap in range(_TAPS_PER_PHASE):
-                weight = kernel[tap * factor + phase] * factor
-                np.multiply(narrow[history - tap:history - tap + frames], weight, out=product)
-                np.add(lane, product, out=lane)
+        # A sum of products over the rows as they lie in the buffer: a matrix
+        # product would first copy them out.
+        np.einsum('nj,pj->np', self._narrow_runs[:frames], self._up_taps,
+                  out=shaped.reshape(frames, factor))
         self._shape(shaped)
         self._down[channel] = wide[-(taps - 1):]
-        # Only every factor-th sample of the low-passed signal is kept, so only
-        # those are computed.
         result = self._product[:frames]
-        result.fill(0.0)
-        scratch = self._scratch[:frames]
-        for tap in range(taps):
-            begin = taps - 1 - tap
-            np.multiply(wide[begin:begin + frames * factor:factor], kernel[tap], out=scratch)
-            np.add(result, scratch, out=result)
+        np.einsum('nj,j->n', self._wide_runs[:frames], self._down_taps, out=result)
         np.copyto(target, result, casting='same_kind')
 
     def _shape(self, samples: NDArray[np.float64]) -> None:

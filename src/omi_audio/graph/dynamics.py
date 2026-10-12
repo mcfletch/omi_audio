@@ -98,6 +98,11 @@ class DynamicsCompressor(Node):
         self._gains = np.zeros(stretches * DETECTOR_FRAMES)
         self._fractions = np.arange(1, DETECTOR_FRAMES + 1, dtype='d') / DETECTOR_FRAMES
 
+    def resume(self, _missed: int) -> None:
+        """Start from no reduction."""
+        self.reduction = 0.0
+        self._level_now = 1.0
+
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
         threshold, knee, ratio, attack, release = self.settings()

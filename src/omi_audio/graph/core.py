@@ -27,6 +27,16 @@ change of wiring takes effect when :meth:`Graph.compile` swaps in a new
 rendering plan, which it builds completely before the swap.  Every buffer a
 node renders into is allocated when the node joins a graph, not while it
 renders.
+
+**What is not rendered.**  Each block, a graph renders only the nodes
+something is heard through.  A node whose output is silent whatever it is
+given -- not playing, paused, or at a gain of nought it has finished ramping
+to (:meth:`Node.listening`) -- writes silence without reading its inputs, and
+a node that only such nodes read is not rendered at all.  When such a node is
+next rendered it is told how many frames went by (:meth:`Node.resume`): a
+source moves on by that much, so it is where it would have been, and a node
+with a memory of its input empties it, so nothing from before is heard.  A
+node that is :attr:`Node.observed` is rendered whether or not it is heard.
 """
 
 from __future__ import annotations
@@ -147,13 +157,19 @@ class Node:
 
     A subclass implements :meth:`process`, and :meth:`output_channels` where it
     produces another number of channels than it is given.  A node with no
-    inputs is a source.
+    inputs is a source.  One that keeps time, or keeps any of its input from
+    block to block, implements :meth:`resume`.
 
     :attr:`gain` multiplies the output, and is ramped across a block when it
     changes.  :attr:`enabled` false passes the mixed input through unprocessed
     and at unit gain.  :attr:`playing` false and :attr:`paused` true both make
     the output silent; a paused node also keeps its state where it was.
     """
+
+    #: Whether the node is rendered though nothing is heard through it: for a
+    #: node that is read from outside the graph, as an analyser is.  A class
+    #: that sets it, or makes it a property, has it read once a block.
+    observed = False
 
     def __init__(self, gain: float = 1.0, channel_count: int = 2,
                  channel_count_mode: str = 'max',
@@ -179,6 +195,9 @@ class Node:
         self._gain_now = self._gain
         self._graph: Graph | None = None
         self._out: NDArray[np.float32] = np.zeros((1, 0), dtype=np.float32)
+        #: The graph's clock at the end of the last block processed; None
+        #: before the first.
+        self._through: int | None = None
 
     def __repr__(self) -> str:
         return '<%s %d in %dch>' % (type(self).__name__, len(self.inputs), self.channels)
@@ -244,6 +263,29 @@ class Node:
         """
         raise NotImplementedError
 
+    def listening(self) -> bool:
+        """Whether the next block's output depends on the inputs.
+
+        False for a node that is not playing, is paused, or is silent
+        (:meth:`silent`); a node that is not :attr:`enabled` passes its input
+        and so always listens.  Read on the audio thread once a block.
+        """
+        if not self.enabled:
+            return True
+        return self.playing and not self.paused and not self.silent()
+
+    def silent(self) -> bool:
+        """Whether the gain is nought and the ramp to it is finished."""
+        return self._gain == 0.0 and self._gain_now == 0.0
+
+    def resume(self, missed: int) -> None:
+        """Carry on after ``missed`` frames in which this node was not rendered.
+
+        A source moves on by ``missed`` frames; a node that keeps some of its
+        input from block to block forgets it.  Runs on the audio thread,
+        before the block is processed.
+        """
+
     def bind(self, graph: Graph) -> None:
         """Join ``graph``, allocating the output buffer; :meth:`Graph.compile` calls it."""
         if self._out.shape != (graph.max_channels, graph.max_block):
@@ -254,6 +296,7 @@ class Node:
     def detach(self) -> None:
         """Leave the graph this node was in, keeping its buffers."""
         self._graph = None
+        self._through = None
 
     def _computed(self, inputs: Sequence[Input], limit: int) -> int:
         """How many channels the mixed input has."""
@@ -279,16 +322,28 @@ class Node:
 
     def render(self, frames: int, inputs: Sequence[Input], graph: Graph) -> None:
         """Render one block: gather, then process, bypass or fall silent."""
-        block = self._gather(inputs, frames, graph)
         out = self._out
+        clock = graph.clock
         if not self.enabled:
+            block = self._gather(inputs, frames, graph)
             self.channels = block.shape[0]
             np.copyto(out[:self.channels, :frames], block)
+            self._through = clock + frames
             return
-        self.channels = min(self.output_channels(block.shape[0]), graph.max_channels)
-        if not self.playing or self.paused:
+        if not self.playing or self.paused or self.silent():
+            # Silence in the channels it last had: its inputs are not
+            # rendered, so they have no count to give.
             out[:self.channels, :frames] = 0.0
+            if not self.playing or self.paused:
+                # Stopped where it is: the time that goes by is not missed.
+                self._through = clock + frames
             return
+        through = self._through
+        if through is not None and through != clock:
+            self.resume(clock - through)
+        self._through = clock + frames
+        block = self._gather(inputs, frames, graph)
+        self.channels = min(self.output_channels(block.shape[0]), graph.max_channels)
         self.process(block, out, frames)
         self._apply_gain(out[:self.channels, :frames], frames, graph)
 
@@ -321,6 +376,18 @@ class _Plan(NamedTuple):
 
     steps: tuple[tuple[Node, tuple[Input, ...]], ...]
     outputs: tuple[Node, ...]
+    #: For each step, the steps its inputs are rendered by.
+    feeds: tuple[tuple[int, ...], ...] = ()
+    #: For each step, whether it is an output.
+    rooted: tuple[bool, ...] = ()
+    #: The step each of ``outputs`` is rendered by.
+    heard: tuple[int, ...] = ()
+    #: A step's worth of False, to start each block from.
+    none: tuple[bool, ...] = ()
+    #: The steps whose node may be :attr:`~Node.observed`.
+    watched: tuple[int, ...] = ()
+    #: For each step, whether this block renders it; the audio thread's.
+    live: list[bool] = []  # noqa: RUF012 a NamedTuple default; every compiled plan gives its own
 
 
 class Graph:
@@ -340,6 +407,10 @@ class Graph:
         self._outputs: list[Node] = []
         self._members: set[Node] = set()
         self._plan = _Plan((), ())
+        #: Frames rendered so far.
+        self.clock = 0
+        #: How many nodes the last block rendered.
+        self.rendered = 0
         size = self.max_block
         #: The mixed input of the node being rendered.
         self._block = np.zeros((self.max_channels, size), dtype=np.float32)
@@ -415,7 +486,19 @@ class Graph:
             if node.graph is None:
                 node.bind(self)
         steps = tuple((node, tuple(node.inputs)) for node in order)
-        self._plan = _Plan(steps, tuple(dict.fromkeys(self._outputs)))
+        at = {node: index for index, node in enumerate(order)}
+        outputs = tuple(dict.fromkeys(self._outputs))
+        heard = set(outputs)
+        self._plan = _Plan(
+            steps, outputs,
+            feeds=tuple(tuple(dict.fromkeys(at[wire.source] for wire in inputs))
+                        for _, inputs in steps),
+            rooted=tuple(node in heard for node in order),
+            heard=tuple(at[node] for node in outputs),
+            none=(False,) * len(steps),
+            watched=tuple(index for index, node in enumerate(order)
+                          if type(node).observed is not False),
+            live=[False] * len(steps))
         kept = set(order)
         for node in self._members - kept:
             node.detach()
@@ -435,12 +518,38 @@ class Graph:
             raise ValueError('block of %d frames exceeds max_block %d'
                              % (frames, self.max_block))
         plan = self._plan
-        for node, inputs in plan.steps:
-            node.render(frames, inputs, self)
+        steps, feeds, live = plan.steps, plan.feeds, plan.live
+        # What is heard, from the outputs back: a node is rendered where it is
+        # observed or is read by a rendered node that listens, and an output
+        # where it is not silent.  An output that is stopped or paused is
+        # rendered, so that it carries on from where it stopped.
+        rooted = plan.rooted
+        live[:] = plan.none
+        for index in plan.watched:
+            if steps[index][0].observed:
+                live[index] = True
+        for index in range(len(steps) - 1, -1, -1):
+            if live[index] or rooted[index]:
+                node = steps[index][0]
+                if node.listening():
+                    live[index] = True
+                    for source in feeds[index]:
+                        live[source] = True
+                elif not node.playing or node.paused:
+                    live[index] = True
+        rendered = 0
+        for index, (node, inputs) in enumerate(steps):
+            if live[index]:
+                node.render(frames, inputs, self)
+                rendered += 1
+        self.rendered = rendered
+        self.clock += frames
         if out is None:
             return
-        for node in plan.outputs:
-            given = node.output(frames)
+        for index in plan.heard:
+            if not live[index]:
+                continue
+            given = steps[index][0].output(frames)
             for row, column, weight in _terms(given.shape[0], 2, 'speakers'):
                 target = out[:frames, row]
                 if weight == 1.0:

@@ -40,6 +40,10 @@ MIN_FFT_SIZE = 32
 #: The level a bin with no energy at all reads, in decibels.
 SILENT_DB = -600.0
 
+#: How long after its data was last read an :class:`Analyser` goes on being
+#: rendered while nothing is heard through it, in seconds.
+WATCHED_SECONDS = 1.0
+
 
 class Analyser(Node):
     """Its input unchanged, with the recent past kept for :meth:`frequency_data`."""
@@ -54,6 +58,8 @@ class Analyser(Node):
         self.smoothing = finite(smoothing)
         self._history = np.zeros(MAX_FFT_SIZE, dtype=np.float32)
         self._written = 0
+        #: The graph's clock when the data was last read; None until it is.
+        self._read_at: int | None = None
         self._mono = np.zeros((1, 0), dtype=np.float32)
         self._smoothed = np.zeros(0)
 
@@ -73,8 +79,27 @@ class Analyser(Node):
         """How many frequency bins :meth:`frequency_data` returns."""
         return self._fft_size // 2
 
+    @property
+    def observed(self) -> bool:  # type: ignore[override]  # a property where Node has a constant
+        """Whether the data was read within the last :data:`WATCHED_SECONDS`.
+
+        An analyser being read is rendered though nothing is heard through
+        it, so a meter on a muted sound still moves.
+        """
+        graph, read = self._graph, self._read_at
+        return (graph is not None and read is not None
+                and graph.clock - read <= WATCHED_SECONDS * graph.sample_rate)
+
+    def resume(self, _missed: int) -> None:
+        """Forget the samples from before."""
+        self._history.fill(0.0)
+
     def prepare(self, graph: Graph) -> None:
         self._mono = np.zeros((1, graph.max_block), dtype=np.float32)
+
+    def silent(self) -> bool:
+        """Never: the gain scales what is analysed, not what passes through."""
+        return False
 
     def _apply_gain(self, out: NDArray[np.float32], frames: int, graph: Graph) -> None:
         """The gain is the analysis's alone; the output is not touched."""
@@ -103,6 +128,8 @@ class Analyser(Node):
 
     def time_domain_data(self) -> NDArray[np.float32]:
         """The latest :attr:`fft_size` samples, oldest first."""
+        if self._graph is not None:
+            self._read_at = self._graph.clock
         size = self._fft_size
         end = self._written % MAX_FFT_SIZE
         return np.roll(self._history, -end)[-size:].copy()

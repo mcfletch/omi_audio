@@ -181,8 +181,18 @@ class TestTime:
     def test_a_paused_node_keeps_its_channel_count(self):
         gain = graph.Gain()
         gain.connect(Constant(1.0, 1.0))
+        made = graph.Graph(RATE, max_block=256)
+        made.add_output(gain)
+        made.render(32)
         gain.paused = True
-        assert rendered(gain).shape[0] == 2
+        made.render(32)
+        assert gain.output(32).shape[0] == 2 and not gain.output(32).any()
+
+    def test_a_node_paused_before_it_is_heard_has_one_channel(self):
+        gain = graph.Gain()
+        gain.connect(Constant(1.0, 1.0))
+        gain.paused = True
+        assert rendered(gain).shape[0] == 1
 
 
 class TestGraph:

@@ -21,7 +21,7 @@ made from the geometry of a head rather than from measured responses.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -38,64 +38,116 @@ __all__ = ['MAX_HEAD_DELAY', 'SPEED_OF_SOUND', 'HeadShadow', 'Panner']
 MAX_HEAD_DELAY = 0.002
 
 
+class _Shelf(NamedTuple):
+    """A head shadow's shelf at one rate and head radius, with its pole's powers."""
+
+    rate: float
+    head_radius: float
+    #: Twice the rate, and twice the frequency the shelf turns over at in
+    #: radians a second: the two terms of the bilinear transform.
+    twice_rate: float
+    turn: float
+    pole: float
+    #: ``pole^-m`` and ``pole^n`` for ``m``, ``n`` from 0; their length is
+    #: the stretch a block is filtered in.
+    inverse: NDArray[np.float64]
+    forward: NDArray[np.float64]
+
+
+def _shelf(head_radius: float, rate: float, longest: int = 512) -> _Shelf:
+    """The shelf turning over at the speed of sound over ``head_radius``, at ``rate``.
+
+    The pole's powers cover a stretch short enough that ``pole^-m`` stays
+    below 1e100, and no longer than ``longest`` frames.
+    """
+    twice_rate = 2.0 * rate
+    turn = 2.0 * SPEED_OF_SOUND / max(head_radius, 1e-6)
+    pole = (twice_rate - turn) / (twice_rate + turn)
+    reach = abs(pole)
+    stretch = longest
+    if 0.0 < reach < 1.0:
+        stretch = max(1, min(longest, int(100.0 / -math.log10(reach))))
+    if pole == 0.0:
+        return _Shelf(rate, head_radius, twice_rate, turn, pole, np.ones(1), np.ones(1))
+    forward = reach ** np.arange(stretch, dtype=np.float64)
+    if pole < 0.0:
+        forward[1::2] *= -1.0
+    return _Shelf(rate, head_radius, twice_rate, turn, pole, 1.0 / forward, forward)
+
+
 class HeadShadow:
     """One ear's head shadow: a first-order shelf, 1 at low frequencies and
     ``shadow`` at high, turning over at the speed of sound over the head's
     radius (Brown and Duda's), by the bilinear transform
 
-    Keeps its last input and output from block to block.
+    Keeps its last input and output from block to block.  The recursion
+    ``y[n] = g[n] + p y[n-1]`` is taken a stretch at a time in closed form,
+    ``y[n] = p^(n+1) y[-1] + p^n sum(p^-m g[m])``, as the biquad's poles are.
     """
 
     def __init__(self) -> None:
         self.x1 = 0.0
         self.y1 = 0.0
+        self._design: _Shelf | None = None
+        self._given = np.zeros(0)
+        self._scratch = np.zeros(0)
 
     def settle(self) -> None:
         """Start from silence"""
         self.x1 = self.y1 = 0.0
 
+    def design(self, head_radius: float, rate: float, longest: int) -> None:
+        """Make the shelf for ``head_radius`` at ``rate``, for blocks up to ``longest`` frames.
+
+        The control thread's: :meth:`run` given another radius or rate, or a
+        longer block, makes the shelf itself, which allocates.
+        """
+        current = self._design
+        if current is None or (current.rate, current.head_radius) != (rate, head_radius):
+            self._design = _shelf(head_radius, rate)
+        if self._given.shape[0] < longest:
+            self._given = np.zeros(longest)
+            self._scratch = np.zeros(longest)
+
     def run(self, signal: NDArray[np.float32], shadow: float, head_radius: float,
             rate: float, out: NDArray[np.float32]) -> None:
-        """`signal` through the shelf into `out`"""
-        twice_rate = 2.0 * rate
-        turn = 2.0 * SPEED_OF_SOUND / max(head_radius, 1e-6)
-        norm = twice_rate + turn
-        b0 = (shadow * twice_rate + turn) / norm
-        b1 = (turn - shadow * twice_rate) / norm
-        pole = (twice_rate - turn) / norm
-        x = np.asarray(signal, dtype=np.float64)
-        given = b0 * x
+        """`signal` through the shelf into `out`, which may be `signal` itself"""
+        frames = signal.shape[0]
+        if not frames:
+            return
+        shelf = self._design
+        if (shelf is None or shelf.rate != rate or shelf.head_radius != head_radius
+                or self._given.shape[0] < frames):
+            self.design(head_radius, rate, frames)
+            shelf = self._design
+            assert shelf is not None
+        norm = shelf.twice_rate + shelf.turn
+        b0 = (shadow * shelf.twice_rate + shelf.turn) / norm
+        b1 = (shelf.turn - shadow * shelf.twice_rate) / norm
+        last = float(signal[-1])
+        # The feed-forward half: g[n] = b0 x[n] + b1 x[n-1].
+        given = self._given[:frames]
+        scratch = self._scratch[:frames]
+        np.multiply(signal, b1, out=scratch)
+        np.multiply(signal, b0, out=given)
         given[0] += b1 * self.x1
-        given[1:] += b1 * x[:-1]
-        self.y1 = _first_order(given, pole, self.y1, out)
-        self.x1 = float(x[-1]) if x.shape[0] else self.x1
-
-
-def _first_order(given: NDArray[np.float64], pole: float, start: float,
-                 out: NDArray[np.float32]) -> float:
-    """``out[n] = given[n] + pole out[n-1]`` from ``out[-1] = start``; the last value
-
-    In stretches short enough that the pole's powers stay within six
-    decades, each a cumulative sum.
-    """
-    frames = given.shape[0]
-    if not frames:
-        return start
-    if pole == 0.0:
-        out[:frames] = given
-        return float(given[-1])
-    reach = abs(pole)
-    stretch = max(1, min(256, int(6.0 / -math.log10(reach)))) if reach < 1.0 else 1
-    carry = start
-    steps = np.arange(1, stretch + 1, dtype=np.float64)
-    for at in range(0, frames, stretch):
-        count = min(stretch, frames - at)
-        powers = pole ** steps[:count]
-        part = np.cumsum(given[at:at + count] / powers * pole) * powers / pole
-        part += powers * carry
-        out[at:at + count] = part
-        carry = float(part[-1])
-    return carry
+        np.add(given[1:], scratch[:-1], out=given[1:])
+        self.x1 = last
+        pole, stretch = shelf.pole, shelf.forward.shape[0]
+        carry = self.y1
+        # With the pole at nought there is no recursion: the output is `given`.
+        for at in range(0, frames if pole else 0, stretch):
+            count = min(stretch, frames - at)
+            part = given[at:at + count]
+            np.multiply(part, shelf.inverse[:count], out=part)
+            np.cumsum(part, out=part)
+            np.multiply(part, shelf.forward[:count], out=part)
+            if carry:
+                np.multiply(shelf.forward[:count], carry * pole, out=scratch[:count])
+                np.add(part, scratch[:count], out=part)
+            carry = float(part[-1])
+        self.y1 = carry if pole else float(given[-1])
+        np.copyto(out, given, casting='same_kind')
 
 
 class Panner(Node):
@@ -133,6 +185,10 @@ class Panner(Node):
     def set_head(self, response: HeadResponse | None) -> None:
         """Hear through `response`'s delays and shadows from the next block; None for none"""
         self._head = response
+        graph = self._graph
+        if response is not None and graph is not None:
+            for shadow in self._shadows:
+                shadow.design(response.head_radius, graph.sample_rate, graph.max_block)
         for ear, late in zip(self._ears, (response.left_delay, response.right_delay)
                              if response is not None else (0.0, 0.0), strict=True):
             ear.delay_time = late
@@ -170,9 +226,26 @@ class Panner(Node):
         self._delay.bind(graph)
         for ear in self._ears:
             ear.bind(graph)
+        head = self._head
+        if head is not None:
+            for shadow in self._shadows:
+                shadow.design(head.head_radius, graph.sample_rate, graph.max_block)
 
     def output_channels(self, _computed: int) -> int:
         return 2
+
+    def silent(self) -> bool:
+        """Whether both ears' gains are nought and the ramps to them finished."""
+        return (self._left == 0.0 and self._right == 0.0
+                and self._left_now == 0.0 and self._right_now == 0.0) or super().silent()
+
+    def resume(self, missed: int) -> None:
+        """Empty the propagation line and each ear's line and shadow."""
+        self._delay.resume(missed)
+        for ear in self._ears:
+            ear.resume(missed)
+        for shadow in self._shadows:
+            shadow.settle()
 
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:

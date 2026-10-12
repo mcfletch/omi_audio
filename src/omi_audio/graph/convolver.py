@@ -162,6 +162,15 @@ class Convolver(Node):
             return 1
         return 2 if (response.channels > 1 or computed > 1) else 1
 
+    def resume(self, _missed: int) -> None:
+        """Forget the input so far: the response's tail of it is not heard."""
+        self._history.fill(0.0)
+        self._spectra.fill(0.0)
+        self._pending.fill(0.0)
+        self._ready.fill(0.0)
+        self._head = 0
+        self._cursor = 0
+
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],
                 frames: int) -> None:
         response = self._response
