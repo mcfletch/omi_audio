@@ -1,8 +1,9 @@
 """What a graph node costs: a block rendered, a filter redesigned.
 
 Each time is the least of several runs, so that a busy machine lengthens the
-test and not the reading, and each bound is several times what the work
-takes.
+test and not the reading.  The budgets are stated for a machine that runs
+:func:`yardstick` in :data:`YARDSTICK` seconds, and a slower machine is allowed
+proportionally more: see :func:`pace`.
 """
 
 import time
@@ -19,6 +20,16 @@ BLOCK = 512
 #: the time the block plays for.
 NODE_BUDGET = BLOCK / RATE / 100.0
 
+#: The most a filter redesign may take, in seconds.
+REDESIGN_BUDGET = 1e-4
+
+#: What :func:`yardstick` takes on the machine the budgets are stated for, in
+#: seconds.
+YARDSTICK = 21e-6
+
+_BLOCK = np.sin(np.arange(BLOCK) * 0.05)
+_TAPS = np.linspace(-1.0, 1.0, BLOCK)
+
 
 def least(work, repeat=200):
     """The least time ``work`` takes over ``repeat`` runs, in seconds."""
@@ -28,6 +39,29 @@ def least(work, repeat=200):
         work()
         best = min(best, time.perf_counter() - started)
     return best
+
+
+def yardstick():
+    """A block's worth of the NumPy calls the nodes are made of.
+
+    A transform and its inverse, a table lookup and a running sum over
+    :data:`BLOCK` samples, so its time moves with the interpreter, the NumPy
+    build and the processor the way a node's does.
+    """
+    spectrum = np.fft.rfft(_BLOCK, 2 * BLOCK)
+    heard = np.fft.irfft(spectrum * spectrum)[:BLOCK]
+    np.interp(heard, _TAPS, _BLOCK)
+    np.cumsum(heard * 0.5 + _BLOCK)
+
+
+@pytest.fixture(scope='module')
+def pace():
+    """How many times longer this machine takes than the one the budgets name.
+
+    Never less than 1, so a faster machine is held to the budgets as written.
+    A hosted CI runner measures between 2 and 3.
+    """
+    return max(1.0, least(yardstick) / YARDSTICK)
 
 
 def head_panner():
@@ -77,19 +111,22 @@ def rendering(node, source=None):
     return lambda: node.render(BLOCK, inputs, found)
 
 
+OVER = '%s took %.1f us on a machine of pace %.2f'
+
+
 @pytest.mark.parametrize('kind', sorted(NODES))
-def test_a_processing_node_renders_a_block_within_its_budget(kind):
+def test_a_processing_node_renders_a_block_within_its_budget(kind, pace):
     taken = least(rendering(NODES[kind](), graph.Oscillator(220.0)))
-    assert taken < NODE_BUDGET, '%s took %.1f us a block' % (kind, taken * 1e6)
+    assert taken < NODE_BUDGET * pace, OVER % (kind, taken * 1e6, pace)
 
 
 @pytest.mark.parametrize('kind', sorted(SOURCES))
-def test_a_source_renders_a_block_within_its_budget(kind):
+def test_a_source_renders_a_block_within_its_budget(kind, pace):
     taken = least(rendering(SOURCES[kind]()))
-    assert taken < NODE_BUDGET, '%s took %.1f us a block' % (kind, taken * 1e6)
+    assert taken < NODE_BUDGET * pace, OVER % (kind, taken * 1e6, pace)
 
 
-def test_a_filter_swept_every_frame_is_redesigned_within_a_tenth_of_a_millisecond():
+def test_a_filter_swept_every_frame_is_redesigned_within_its_budget(pace):
     sweep = graph.BiquadFilter('lowpass', 900.0, q=3.0)
     found = graph.Graph(RATE)
     found.add_output(sweep.connect(graph.Oscillator(220.0)))
@@ -98,7 +135,7 @@ def test_a_filter_swept_every_frame_is_redesigned_within_a_tenth_of_a_millisecon
     def redesign():
         sweep.frequency = float(next(frequencies))
     taken = least(redesign)
-    assert taken < 1e-4, 'a redesign took %.1f us' % (taken * 1e6,)
+    assert taken < REDESIGN_BUDGET * pace, OVER % ('a redesign', taken * 1e6, pace)
 
 
 def test_unheard_chains_cost_a_block_a_fraction_of_what_they_would_heard():

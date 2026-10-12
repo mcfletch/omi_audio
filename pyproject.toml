@@ -177,6 +177,7 @@ ignore = ["UP031", "UP032"]
 # No `python_version`: the checker runs under whichever interpreter tox gave it,
 # so the matrix checks the floor and the ceiling rather than one version in the
 # middle.  See the `typecheck` env in tox.ini.
+strict = true
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true

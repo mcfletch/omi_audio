@@ -79,7 +79,8 @@ microseconds: about 3 for a `Gain` or a `Panner`, 11 to 19 for an
 `Panner` with a head and a propagation delay. Most of that is fixed for each
 block, so a block four times as long costs about twice as much.
 `tests/test_graph_cost.py` holds each node to a hundredth of the time a
-512-frame block plays for. Setting a `BiquadFilter`'s frequency, `q`, detune
+512-frame block plays for, on a machine that runs the test's yardstick in
+21 microseconds; a slower machine is allowed proportionally more. Setting a `BiquadFilter`'s frequency, `q`, detune
 or gain redesigns it in about 30 microseconds.
 
 ## Channels

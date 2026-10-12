@@ -146,7 +146,9 @@ class Analyser(Node):
         if self._smoothed.shape[0] != magnitude.shape[0]:
             self._smoothed = np.zeros(magnitude.shape[0])
         self._smoothed = keep * self._smoothed + (1.0 - keep) * np.nan_to_num(magnitude)
-        return 20.0 * np.log10(np.maximum(self._smoothed, 10.0 ** (SILENT_DB / 20.0)))
+        floor = 10.0 ** (SILENT_DB / 20.0)
+        decibels: NDArray[np.float64] = 20.0 * np.log10(np.maximum(self._smoothed, floor))
+        return decibels
 
     def byte_frequency_data(self) -> NDArray[np.uint8]:
         """:meth:`frequency_data` from :attr:`min_decibels` .. :attr:`max_decibels` as 0 .. 255."""

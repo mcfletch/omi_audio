@@ -196,7 +196,7 @@ class Oscillator(Node):
     def pitch(self) -> float:
         """The frequency played, in hertz, detune included and limited to Nyquist."""
         nyquist = self.sample_rate / 2.0
-        pitch = self._frequency * 2.0 ** (self._detune / 1200.0)
+        pitch = self._frequency * math.pow(2.0, self._detune / 1200.0)
         return max(-nyquist, min(nyquist, pitch))
 
     def start(self) -> None:
@@ -400,7 +400,7 @@ class BufferSource(Node):
 
     def _step(self) -> float:
         """Frames of the buffer the playhead moves each frame rendered."""
-        return (self.playback_rate * 2.0 ** (self.detune / 1200.0)
+        return (self.playback_rate * math.pow(2.0, self.detune / 1200.0)
                 * self.buffer_rate / self.sample_rate)
 
     def resume(self, missed: int) -> None:
@@ -533,7 +533,7 @@ class CaptureRing:
     def read_into(self, target: NDArray[np.float32]) -> int:
         """Fill ``target`` from the ring; returns how many samples were waiting."""
         size = self.capacity
-        count = min(target.shape[0], self._written - self._read)
+        count = min(int(target.shape[0]), self._written - self._read)
         start = self._read % size
         first = min(count, size - start)
         target[:first] = self._data[start:start + first]
