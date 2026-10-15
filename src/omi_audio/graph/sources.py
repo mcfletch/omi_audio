@@ -221,7 +221,7 @@ class Oscillator(Node):
         self._increment = self.pitch / graph.sample_rate
         self._choose_table()
 
-    def output_channels(self, _computed: int) -> int:
+    def output_channels(self, computed: int) -> int:  # noqa: ARG002 - the base method's signature is kept
         return 1
 
     def resume(self, missed: int) -> None:
@@ -229,7 +229,7 @@ class Oscillator(Node):
         self._increment = self.pitch / self.sample_rate
         self._phase = math.fmod(self._phase + missed * self._increment, 1.0) % 1.0
 
-    def process(self, _block: NDArray[np.float32], out: NDArray[np.float32],
+    def process(self, block: NDArray[np.float32], out: NDArray[np.float32],  # noqa: ARG002 - the base method's signature is kept
                 frames: int) -> None:
         start = self._increment
         end = self.pitch / self.sample_rate
@@ -395,7 +395,7 @@ class BufferSource(Node):
         self._positions = np.zeros(size)
         self._scratch = np.zeros(size, dtype=np.float32)
 
-    def output_channels(self, _computed: int) -> int:
+    def output_channels(self, computed: int) -> int:  # noqa: ARG002 - the base method's signature is kept
         return int(self._buffer[0].shape[0])
 
     def _step(self) -> float:
@@ -418,7 +418,7 @@ class BufferSource(Node):
             self.position = position
             self.finished = not 0.0 <= position < end
 
-    def process(self, _block: NDArray[np.float32], out: NDArray[np.float32],
+    def process(self, block: NDArray[np.float32], out: NDArray[np.float32],  # noqa: ARG002 - the base method's signature is kept
                 frames: int) -> None:
         data, rate = self._buffer
         channels = data.shape[0]
@@ -555,13 +555,13 @@ class CaptureSource(Node):
         #: Where the captured samples arrive.
         self.ring = ring if ring is not None else CaptureRing()
 
-    def output_channels(self, _computed: int) -> int:
+    def output_channels(self, computed: int) -> int:  # noqa: ARG002 - the base method's signature is kept
         return 1
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """What arrived while nothing was heard is dropped: the input is live."""
         self.ring.skip()
 
-    def process(self, _block: NDArray[np.float32], out: NDArray[np.float32],
+    def process(self, block: NDArray[np.float32], out: NDArray[np.float32],  # noqa: ARG002 - the base method's signature is kept
                 frames: int) -> None:
         self.ring.read_into(out[0, :frames])

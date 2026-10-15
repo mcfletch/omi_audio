@@ -90,7 +90,7 @@ class Analyser(Node):
         return (graph is not None and read is not None
                 and graph.clock - read <= WATCHED_SECONDS * graph.sample_rate)
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """Forget the samples from before."""
         self._history.fill(0.0)
 

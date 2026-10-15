@@ -98,7 +98,7 @@ class DynamicsCompressor(Node):
         self._gains = np.zeros(stretches * DETECTOR_FRAMES)
         self._fractions = np.arange(1, DETECTOR_FRAMES + 1, dtype='d') / DETECTOR_FRAMES
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """Start from no reduction."""
         self.reduction = 0.0
         self._level_now = 1.0

@@ -162,7 +162,7 @@ class Convolver(Node):
             return 1
         return 2 if (response.channels > 1 or computed > 1) else 1
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """Forget the input so far: the response's tail of it is not heard."""
         self._history.fill(0.0)
         self._spectra.fill(0.0)

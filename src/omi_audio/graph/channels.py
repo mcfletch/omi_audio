@@ -39,7 +39,7 @@ class ChannelSelector(Node):
         super().__init__(gain=gain, **named)
         self.selection = int(selection)
 
-    def output_channels(self, _computed: int) -> int:
+    def output_channels(self, computed: int) -> int:  # noqa: ARG002 - the base method's signature is kept
         return 1
 
     def process(self, block: NDArray[np.float32], out: NDArray[np.float32],

@@ -122,7 +122,7 @@ exclude_lines = [
 # The OGC rules (openglcontext-checks) this project is clean of, held by
 # the workspace preflight. The others join as the project reaches zero of
 # each; the counts are in openglcontext/plans/DEFECT-PREVENTION.md.
-select = ["OGC101", "OGC102", "OGC111", "OGC121", "OGC131", "OGC141", "OGC221"]
+select = ["OGC101", "OGC102", "OGC111", "OGC121", "OGC131", "OGC141", "OGC221", "OGC232"]
 
 [tool.openglcontext-checks.scopes]
 # What reads a document's KHR_audio_emitter values and the audio it names,

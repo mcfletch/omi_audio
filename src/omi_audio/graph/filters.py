@@ -293,7 +293,7 @@ class BiquadFilter(Node):
         self._carry = np.zeros(size, dtype=complex)
         self._redesign()
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """Start from silence: no input or output remembered."""
         self._state.fill(0.0)
 
@@ -424,7 +424,7 @@ class Delay(Node):
         self._scratch = np.zeros(size, dtype=np.float32)
         self._allocate(graph)
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """Empty the line of the channels in use, and take the delay as reached."""
         self._line[:self.channels].fill(0.0)
         self._delay_now = self.delay_time
@@ -591,7 +591,7 @@ class WaveShaper(Node):
     def prepare(self, graph: Graph) -> None:
         self._allocate(graph)
 
-    def resume(self, _missed: int) -> None:
+    def resume(self, missed: int) -> None:  # noqa: ARG002 - the base method's signature is kept
         """Empty the resampling filters' histories."""
         self._up.fill(0.0)
         self._down.fill(0.0)

@@ -231,7 +231,7 @@ class Panner(Node):
             for shadow in self._shadows:
                 shadow.design(head.head_radius, graph.sample_rate, graph.max_block)
 
-    def output_channels(self, _computed: int) -> int:
+    def output_channels(self, computed: int) -> int:  # noqa: ARG002 - the base method's signature is kept
         return 2
 
     def silent(self) -> bool:
